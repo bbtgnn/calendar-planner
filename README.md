@@ -1,42 +1,34 @@
-# sv
+# Lesson planner (teacher)
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+Browser-only lesson planner for multiple classes: semester hour targets, dated lessons, done/todo, student rosters (CRUD + `.txt` / `.csv` import), and absence marks per session. Data stays in **IndexedDB** (Dexie) on your device.
 
-## Creating a project
+## Requirements
 
-If you're seeing this, you've probably already done this step. Congrats!
+- [Bun](https://bun.sh) for install and scripts
 
-```sh
-# create a new project
-npx sv create my-app
+## Develop
+
+```bash
+bun install
+bun run dev
 ```
 
-To recreate this project with the same configuration:
+## Test
 
-```sh
-# recreate this project
-bun x sv@0.15.1 create --template minimal --types ts --add vitest="usages:unit" --no-download-check --install bun .
+```bash
+bun run test
 ```
 
-## Developing
+## Build (static SPA)
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+```bash
+bun run build
 ```
 
-## Building
+Output is in `build/`. Serve as static files; the app uses `index.html` as SPA fallback.
 
-To create a production version of your app:
+## Check
 
-```sh
-npm run build
+```bash
+bun run check
 ```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.

@@ -1,0 +1,194 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import type { PageData } from './$types';
+	import { updateLesson } from '$lib/repos/lessons.repo';
+	import { listStudents } from '$lib/repos/students.repo';
+	import { listAbsentStudentIds, setAbsent } from '$lib/repos/attendance.repo';
+	import { withRetry } from '$lib/db/withRetry';
+	import { showToast } from '$lib/stores/toast';
+	import type { StudentRow } from '$lib/db/types';
+
+	let { data }: { data: PageData } = $props();
+
+	let date = $state('');
+	let durationHours = $state(0);
+	let title = $state('');
+	let done = $state(false);
+
+	let students = $state<StudentRow[]>([]);
+	let absent = $state<Set<string>>(new Set());
+
+	$effect(() => {
+		date = data.lesson.date;
+		durationHours = data.lesson.durationHours;
+		title = data.lesson.title;
+		done = data.lesson.done;
+	});
+
+	async function refresh() {
+		students = await listStudents(data.lesson.classId);
+		const ids = await listAbsentStudentIds(data.lesson.id);
+		absent = new Set(ids);
+	}
+
+	onMount(refresh);
+
+	async function saveMeta() {
+		try {
+			await withRetry(() =>
+				updateLesson(data.lesson.id, {
+					date,
+					durationHours,
+					title,
+					done
+				})
+			);
+			showToast('Lesson saved.');
+		} catch {
+			showToast('Could not save lesson.');
+		}
+	}
+
+	async function toggleAbsent(studentId: string, isAbsent: boolean) {
+		const next = new Set(absent);
+		if (isAbsent) next.add(studentId);
+		else next.delete(studentId);
+		absent = next;
+		try {
+			await withRetry(() => setAbsent(data.lesson.id, studentId, isAbsent));
+		} catch {
+			showToast('Could not save attendance.');
+			await refresh();
+		}
+	}
+</script>
+
+<section class="card">
+	<p class="back">
+		<a href="/class/{data.lesson.classId}">← Back to schedule</a>
+	</p>
+	<h1>{title}</h1>
+
+	<div class="grid">
+		<label>
+			Date
+			<input type="date" bind:value={date} />
+		</label>
+		<label>
+			Hours
+			<input type="number" min="0" step="0.25" bind:value={durationHours} />
+		</label>
+		<label>
+			Title
+			<input type="text" bind:value={title} />
+		</label>
+		<label class="check">
+			<input type="checkbox" bind:checked={done} />
+			Done
+		</label>
+		<button type="button" class="btn primary" onclick={saveMeta}>Save lesson</button>
+	</div>
+</section>
+
+<section class="card">
+	<h2>Attendance</h2>
+	{#if students.length === 0}
+		<p class="muted">Add students on the Students tab to record absences.</p>
+	{:else}
+		<p class="hint">Everyone is present unless marked absent.</p>
+		<ul class="list">
+			{#each students as s (s.id)}
+				<li>
+					<span>{s.name}</span>
+					<label>
+						<input
+							type="checkbox"
+							checked={absent.has(s.id)}
+							onchange={(e) =>
+								toggleAbsent(s.id, (e.currentTarget as HTMLInputElement).checked)}
+						/>
+						Absent
+					</label>
+				</li>
+			{/each}
+		</ul>
+	{/if}
+</section>
+
+<style>
+	.card {
+		background: #fff;
+		padding: 1.25rem;
+		border-radius: 8px;
+		border: 1px solid #e2e5eb;
+		margin-bottom: 1rem;
+	}
+	.back {
+		margin: 0 0 0.5rem;
+	}
+	h1 {
+		margin: 0 0 1rem;
+		font-size: 1.25rem;
+	}
+	h2 {
+		margin: 0 0 0.5rem;
+		font-size: 1.05rem;
+	}
+	.grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+		gap: 0.75rem;
+		align-items: end;
+	}
+	label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		font-size: 0.85rem;
+	}
+	.check {
+		flex-direction: row;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	input[type='date'],
+	input[type='number'],
+	input[type='text'] {
+		padding: 0.35rem 0.5rem;
+		border: 1px solid #c9ced6;
+		border-radius: 6px;
+	}
+	.btn {
+		padding: 0.45rem 0.75rem;
+		border: 1px solid #c9ced6;
+		background: #fff;
+		border-radius: 6px;
+		cursor: pointer;
+		height: fit-content;
+	}
+	.btn.primary {
+		background: #1a56b8;
+		color: #fff;
+		border-color: #1a56b8;
+	}
+	.list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+	}
+	.list li {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 1rem;
+		padding: 0.4rem 0;
+		border-bottom: 1px solid #eef0f3;
+	}
+	.hint {
+		font-size: 0.9rem;
+		color: #444;
+	}
+	.muted {
+		color: #666;
+	}
+</style>
