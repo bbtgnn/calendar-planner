@@ -1,5 +1,8 @@
 node_modules
 
+# Local git worktrees (see using-git-worktrees skill)
+.worktrees/
+
 # Output
 .output
 .vercel
