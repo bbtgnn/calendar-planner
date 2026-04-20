@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
 	import { updateLesson } from '$lib/repos/lessons.repo';
 	import { listStudents } from '$lib/repos/students.repo';
@@ -31,6 +30,7 @@
 		title = data.lesson.title;
 		done = data.lesson.done;
 		sessionKind = data.lesson.sessionKind;
+		void refresh();
 	});
 
 	async function refresh() {
@@ -42,8 +42,6 @@
 		const ids = await listAbsentStudentIds(data.lesson.id);
 		absent = new Set(ids);
 	}
-
-	onMount(refresh);
 
 	async function persistLessonMeta() {
 		const h = Number(durationHours);

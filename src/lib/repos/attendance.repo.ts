@@ -10,10 +10,6 @@ export async function listAbsentStudentIds(lessonId: LessonId): Promise<StudentI
 	return rows.map((r) => r.studentId);
 }
 
-export async function countAbsencesForLesson(lessonId: LessonId): Promise<number> {
-	return db.absences.where('lessonId').equals(lessonId).count();
-}
-
 export async function setAbsent(lessonId: LessonId, studentId: StudentId, absent: boolean): Promise<void> {
 	const id = absenceId(lessonId, studentId);
 	if (absent) {

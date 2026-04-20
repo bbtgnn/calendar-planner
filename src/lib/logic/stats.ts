@@ -42,7 +42,7 @@ export function sumTeacherHoursForKind(
 	lessons: LessonForContractStats[],
 	kind: LessonSessionKind
 ): number {
-	return lessons.filter((l) => l.sessionKind === kind).reduce((s, l) => s + l.durationHours, 0);
+	return sumDurationHours(lessons.filter((l) => l.sessionKind === kind));
 }
 
 /** max(0, C_min − T_class) */
