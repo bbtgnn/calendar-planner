@@ -49,8 +49,13 @@
 	onMount(refresh);
 
 	async function saveTarget() {
+		const t = Number(targetHours);
+		if (!Number.isFinite(t) || t < 0) {
+			showToast('Enter a valid non-negative hour target.');
+			return;
+		}
 		try {
-			await withRetry(() => updateClass(data.class.id, { totalHoursTarget: targetHours }));
+			await withRetry(() => updateClass(data.class.id, { totalHoursTarget: t }));
 			showToast('Saved hour target.');
 		} catch {
 			showToast('Could not save hour target.');

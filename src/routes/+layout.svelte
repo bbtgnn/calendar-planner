@@ -51,9 +51,10 @@
 		if (!routeClassId) return;
 		const current = classes.find((c) => c.id === routeClassId)?.name ?? '';
 		const name = window.prompt('Rename class', current);
-		if (!name?.trim() || name.trim() === current) return;
+		const trimmed = name?.trim() ?? '';
+		if (!trimmed || trimmed === current.trim()) return;
 		try {
-			await withRetry(() => updateClass(routeClassId, { name: name.trim() }));
+			await withRetry(() => updateClass(routeClassId, { name: trimmed }));
 			await refreshClasses();
 		} catch {
 			showToast('Could not rename class.');
