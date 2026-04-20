@@ -1,6 +1,5 @@
 import { db } from '$lib/db/client';
 import type { ClassId, LessonId, LessonRow, LessonSessionKind } from '$lib/db/types';
-import { countAbsencesForLesson } from './attendance.repo';
 
 export async function listLessons(classId: ClassId): Promise<LessonRow[]> {
 	const rows = await db.lessons.where('classId').equals(classId).toArray();
@@ -37,13 +36,17 @@ export async function updateLesson(
 	patch: Partial<Pick<LessonRow, 'date' | 'durationHours' | 'title' | 'done' | 'sessionKind'>>
 ): Promise<void> {
 	if (patch.sessionKind === 'extra') {
-		const current = await getLesson(id);
-		if (current?.sessionKind !== 'extra') {
-			const n = await countAbsencesForLesson(id);
-			if (n > 0) {
-				throw new Error('SESSION_KIND_EXTRA_BLOCKED_ABSENCES');
+		await db.transaction('rw', db.lessons, db.absences, async () => {
+			const current = await db.lessons.get(id);
+			if (current?.sessionKind !== 'extra') {
+				const n = await db.absences.where('lessonId').equals(id).count();
+				if (n > 0) {
+					throw new Error('SESSION_KIND_EXTRA_BLOCKED_ABSENCES');
+				}
 			}
-		}
+			await db.lessons.update(id, patch);
+		});
+		return;
 	}
 	await db.lessons.update(id, patch);
 }

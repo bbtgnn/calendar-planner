@@ -48,8 +48,10 @@ A **browser-only** application for teachers to plan **multiple classes** across 
 
 - **`scheduledHours`**: sum of `durationHours` over all lessons in the class.
 - **`remainingHours`**: `totalHoursTarget − scheduledHours` (may be **negative** if overscheduled).
-- **`scheduledLessonCount`**: count of lesson rows.
-- **`doneLessonCount`**: count of lessons with `done === true`.
+- **`scheduledLessonCount`**: count of **class** sessions only (`sessionKind === 'class'`), not Extra / 1:1 rows.
+- **`doneLessonCount`**: among **class** sessions only, count with `done === true`.
+
+*(Later contract work adds `requiredStudentLessonHours` (M), teacher vs student hour conversions, and Extra session counts separately — see implementation and `docs/superpowers/plans/2026-04-20-teacher-student-contract-stats.md`.)*
 
 ---
 
@@ -94,8 +96,8 @@ A **browser-only** application for teachers to plan **multiple classes** across 
 | Target hours | `totalHoursTarget` |
 | Scheduled hours | Sum of `durationHours` over all lessons in the class |
 | Remaining hours | `target − scheduled` (negative ⇒ overscheduled) |
-| Scheduled lesson count | Number of lesson rows |
-| Done lesson count | Lessons with `done === true` |
+| Scheduled lesson count | **Class** sessions only (`sessionKind === 'class'`) |
+| Done lesson count | **Class** sessions with `done === true` (Extra sessions use a separate done / count line in UI) |
 
 ---
 

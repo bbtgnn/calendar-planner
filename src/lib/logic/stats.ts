@@ -12,12 +12,16 @@ export type LessonForContractStats = {
 /** Alias for docs / older references — same shape as `LessonForContractStats`. */
 export type LessonForStats = LessonForContractStats;
 
-export function sumScheduledHours(lessons: Pick<LessonForContractStats, 'durationHours'>[]): number {
+function sumDurationHours(lessons: { durationHours: number }[]): number {
 	return lessons.reduce((s, l) => s + l.durationHours, 0);
 }
 
+export function sumScheduledHours(lessons: Pick<LessonForContractStats, 'durationHours'>[]): number {
+	return sumDurationHours(lessons);
+}
+
 export function sumScheduledTeacherHours(lessons: LessonForContractStats[]): number {
-	return lessons.reduce((s, l) => s + l.durationHours, 0);
+	return sumDurationHours(lessons);
 }
 
 export function remainingHours(totalHoursTarget: number, scheduledHours: number): number {

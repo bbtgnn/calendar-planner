@@ -35,6 +35,10 @@
 
 	async function refresh() {
 		students = await listStudents(data.lesson.classId);
+		if (sessionKind === 'extra') {
+			absent = new Set();
+			return;
+		}
 		const ids = await listAbsentStudentIds(data.lesson.id);
 		absent = new Set(ids);
 	}
@@ -69,7 +73,8 @@
 			await withRetry(() => updateLesson(data.lesson.id, { sessionKind: next }));
 		} catch (e) {
 			sessionKind = prev;
-			if (String(e).includes('SESSION_KIND_EXTRA_BLOCKED_ABSENCES')) {
+			const msg = e instanceof Error ? e.message : String(e);
+			if (msg.includes('SESSION_KIND_EXTRA_BLOCKED_ABSENCES')) {
 				showToast('Clear all absences for this session before marking it as Extra.');
 			} else {
 				showToast('Could not update session kind.');
