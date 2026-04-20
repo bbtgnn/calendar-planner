@@ -6,7 +6,7 @@
 
 **Architecture:** Pure **domain logic** (`stats`, roster import) lives in **testable TypeScript modules**. **Dexie** holds **classes**, **students**, **lessons**, and **absence** rows (sparse: only absent pairs). **Repositories** encapsulate CRUD and **cascade deletes**. **SvelteKit** routes stay thin; **`ssr: false`** and **`adapter-static`** with **`fallback: 'index.html'`** make a static SPA. **Active class id** in **`localStorage`**.
 
-**Tech Stack:** SvelteKit (Svelte 5), Vite, TypeScript, Dexie 4, Vitest, `fake-indexeddb` (tests). CSV parsing is implemented manually in `rosterImport.ts` (first-column rule from spec).
+**Tech Stack:** SvelteKit (Svelte 5), Vite, TypeScript, Dexie 4, Vitest, `fake-indexeddb` (tests). CSV parsing is implemented manually in `rosterImport.ts` (first-column rule from spec). **Package manager: [Bun](https://bun.sh)** — use `bun install`, `bun run`, and `bunx` instead of npm/npx.
 
 ---
 
@@ -56,19 +56,27 @@
 - Create: project files under `calendar-planner/` (many)
 - Modify: none beyond generated
 
+- [ ] **Step 0: Ensure Bun is installed**
+
+```bash
+bun --version
+```
+
+Expected: prints a version string. If missing, install from [https://bun.sh](https://bun.sh).
+
 - [ ] **Step 1: Run Svelte CLI** (directory contains `docs/` — use `--no-dir-check`)
 
 ```bash
 cd /Users/giovanniabbatepaolo/Desktop/calendar-planner
-npx sv create . --template minimal --types ts --add vitest --install npm --no-dir-check
+bunx sv create . --template minimal --types ts --add vitest --install bun --no-dir-check
 ```
 
-Expected: CLI creates `package.json`, `src/`, `vite.config.ts`, `svelte.config.js`, etc., and runs `npm install`.
+Expected: CLI creates `package.json`, `src/`, `vite.config.ts`, `svelte.config.js`, etc., and runs `bun install`.
 
 - [ ] **Step 2: Verify dev server**
 
 ```bash
-npm run dev -- --host 127.0.0.1 --port 5173
+bun run dev -- --host 127.0.0.1 --port 5173
 ```
 
 Expected: server starts; open `http://127.0.0.1:5173` — page loads. Stop with Ctrl+C.
@@ -92,7 +100,7 @@ git commit -m "chore: scaffold SvelteKit with Vitest"
 - [ ] **Step 1: Install adapter-static**
 
 ```bash
-npm install -D @sveltejs/adapter-static
+bun add -d @sveltejs/adapter-static
 ```
 
 - [ ] **Step 2: Replace `svelte.config.js` contents**
@@ -128,7 +136,7 @@ export const prerender = false;
 - [ ] **Step 4: Build check**
 
 ```bash
-npm run build
+bun run build
 ```
 
 Expected: `build/` contains `index.html` and client bundles; no prerender errors for missing dynamic routes.
@@ -136,7 +144,7 @@ Expected: `build/` contains `index.html` and client bundles; no prerender errors
 - [ ] **Step 5: Commit**
 
 ```bash
-git add svelte.config.js package.json package-lock.json src/routes/+layout.ts
+git add svelte.config.js package.json bun.lockb src/routes/+layout.ts
 git commit -m "build: adapter-static SPA fallback and disable SSR"
 ```
 
@@ -181,7 +189,7 @@ describe('stats', () => {
 - [ ] **Step 2: Run tests — expect FAIL**
 
 ```bash
-npx vitest run src/lib/logic/stats.test.ts
+bunx vitest run src/lib/logic/stats.test.ts
 ```
 
 Expected: FAIL — cannot resolve `./stats` or missing exports.
@@ -214,7 +222,7 @@ export function doneLessonCount(lessons: LessonForStats[]): number {
 - [ ] **Step 4: Run tests — expect PASS**
 
 ```bash
-npx vitest run src/lib/logic/stats.test.ts
+bunx vitest run src/lib/logic/stats.test.ts
 ```
 
 Expected: all tests pass.
@@ -269,7 +277,7 @@ describe('rosterImport', () => {
 - [ ] **Step 2: Run tests — expect FAIL**
 
 ```bash
-npx vitest run src/lib/logic/rosterImport.test.ts
+bunx vitest run src/lib/logic/rosterImport.test.ts
 ```
 
 - [ ] **Step 3: Implement** — `src/lib/logic/rosterImport.ts`
@@ -320,7 +328,7 @@ export function parseCsvNames(content: string): ImportNamesResult {
 - [ ] **Step 4: Run tests — expect PASS**
 
 ```bash
-npx vitest run src/lib/logic/rosterImport.test.ts
+bunx vitest run src/lib/logic/rosterImport.test.ts
 ```
 
 - [ ] **Step 5: Commit**
@@ -343,8 +351,8 @@ git commit -m "feat: roster txt/csv name parsing with tests"
 - [ ] **Step 1: Install dependencies**
 
 ```bash
-npm install dexie
-npm install -D fake-indexeddb
+bun add dexie
+bun add -d fake-indexeddb
 ```
 
 - [ ] **Step 2: Create `src/lib/db/types.ts`**
@@ -450,7 +458,7 @@ describe('db', () => {
 ```
 
 ```bash
-npx vitest run src/lib/db/client.smoke.test.ts
+bunx vitest run src/lib/db/client.smoke.test.ts
 ```
 
 Expected: PASS.
@@ -458,7 +466,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add package.json package-lock.json src/lib/db/types.ts src/lib/db/client.ts src/test/setup.ts vite.config.ts src/lib/db/client.smoke.test.ts
+git add package.json bun.lockb src/lib/db/types.ts src/lib/db/client.ts src/test/setup.ts vite.config.ts src/lib/db/client.smoke.test.ts
 git commit -m "feat: Dexie schema and DB client with smoke test"
 ```
 
@@ -566,7 +574,7 @@ describe('classes.repo', () => {
 - [ ] **Step 3: Run tests**
 
 ```bash
-npx vitest run src/lib/repos/classes.repo.test.ts
+bunx vitest run src/lib/repos/classes.repo.test.ts
 ```
 
 Expected: PASS.
@@ -772,7 +780,7 @@ describe('withRetry', () => {
 ```
 
 ```bash
-npx vitest run src/lib/db/withRetry.test.ts
+bunx vitest run src/lib/db/withRetry.test.ts
 ```
 
 - [ ] **Step 3: Commit**
@@ -960,20 +968,20 @@ Browser-only lesson planner. Data in IndexedDB (Dexie).
 ## Develop
 
 \`\`\`bash
-npm install
-npm run dev
+bun install
+bun run dev
 \`\`\`
 
 ## Test
 
 \`\`\`bash
-npm run test
+bun run test
 \`\`\`
 
 ## Build (static)
 
 \`\`\`bash
-npm run build
+bun run build
 \`\`\`
 
 Serve `build/` as static files; SPA fallback is `index.html`.
@@ -982,7 +990,7 @@ Serve `build/` as static files; SPA fallback is `index.html`.
 - [ ] **Step 1: Run full test suite**
 
 ```bash
-npm run test
+bun run test
 ```
 
 Expected: all tests pass.
