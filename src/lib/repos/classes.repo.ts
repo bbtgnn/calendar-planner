@@ -31,15 +31,14 @@ export async function updateClass(
 }
 
 export async function deleteClassCascade(id: ClassId): Promise<void> {
-	const studentIds = await db.students.where('classId').equals(id).primaryKeys();
-	const lessonIds = await db.lessons.where('classId').equals(id).primaryKeys();
-
 	await db.transaction('rw', db.classes, db.students, db.lessons, db.absences, async () => {
-		for (const lessonId of lessonIds) {
-			await db.absences.where('lessonId').equals(lessonId).delete();
+		const lessonIds = (await db.lessons.where('classId').equals(id).primaryKeys()) as string[];
+		const studentIds = (await db.students.where('classId').equals(id).primaryKeys()) as string[];
+		if (lessonIds.length > 0) {
+			await db.absences.where('lessonId').anyOf(lessonIds).delete();
 		}
-		for (const studentId of studentIds) {
-			await db.absences.where('studentId').equals(studentId).delete();
+		if (studentIds.length > 0) {
+			await db.absences.where('studentId').anyOf(studentIds).delete();
 		}
 		await db.lessons.where('classId').equals(id).delete();
 		await db.students.where('classId').equals(id).delete();

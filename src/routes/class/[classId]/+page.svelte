@@ -29,14 +29,14 @@
 
 	const scheduled = $derived(sumScheduledHours(lessons));
 	const remaining = $derived(remainingHours(targetHours, scheduled));
-	const dupDates = $derived(() => {
+	const dupDates = $derived.by(() => {
 		const counts = new Map<string, number>();
 		for (const l of lessons) {
 			counts.set(l.date, (counts.get(l.date) ?? 0) + 1);
 		}
 		return [...counts.values()].some((n) => n > 1);
 	});
-	const pctDone = $derived(() => {
+	const pctDone = $derived.by(() => {
 		const s = scheduledLessonCount(lessons);
 		if (s === 0) return 0;
 		return Math.round((doneLessonCount(lessons) / s) * 100);
@@ -62,12 +62,17 @@
 			showToast('Pick a date for the new lesson.');
 			return;
 		}
+		const h = Number(newHours);
+		if (!Number.isFinite(h) || h < 0) {
+			showToast('Enter a valid non-negative number of hours.');
+			return;
+		}
 		try {
 			await withRetry(() =>
 				createLesson({
 					classId: data.class.id,
 					date: newDate,
-					durationHours: Number(newHours),
+					durationHours: h,
 					title: newTitle
 				})
 			);
@@ -119,11 +124,11 @@
 		</p>
 		<p>
 			<strong>Lessons done:</strong>
-			{doneLessonCount(lessons)} / {scheduledLessonCount(lessons)} ({pctDone()}%)
+			{doneLessonCount(lessons)} / {scheduledLessonCount(lessons)} ({pctDone}%)
 		</p>
 	</div>
 
-	{#if dupDates()}
+	{#if dupDates}
 		<p class="hint">Some dates have more than one lesson — allowed.</p>
 	{/if}
 </section>
@@ -160,7 +165,7 @@
 						<th>Hours</th>
 						<th>Title</th>
 						<th>Done</th>
-						<th></th>
+						<th scope="col" class="sr-only">Actions</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -278,5 +283,16 @@
 	}
 	.link.danger {
 		color: #a32020;
+	}
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
 	}
 </style>

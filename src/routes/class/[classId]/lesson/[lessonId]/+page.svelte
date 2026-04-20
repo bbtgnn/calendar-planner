@@ -15,10 +15,16 @@
 	let title = $state('');
 	let done = $state(false);
 
+	/** Reseed form only when navigating to a different lesson (avoids clobbering in-progress edits). */
+	let loadedLessonId = $state('');
+
 	let students = $state<StudentRow[]>([]);
 	let absent = $state<Set<string>>(new Set());
 
 	$effect(() => {
+		const id = data.lesson.id;
+		if (id === loadedLessonId) return;
+		loadedLessonId = id;
 		date = data.lesson.date;
 		durationHours = data.lesson.durationHours;
 		title = data.lesson.title;
@@ -33,17 +39,21 @@
 
 	onMount(refresh);
 
-	async function saveMeta() {
+	async function persistLessonMeta() {
+		const h = Number(durationHours);
+		if (!Number.isFinite(h) || h < 0) {
+			showToast('Enter a valid non-negative number of hours.');
+			return;
+		}
 		try {
 			await withRetry(() =>
 				updateLesson(data.lesson.id, {
 					date,
-					durationHours,
+					durationHours: h,
 					title,
 					done
 				})
 			);
-			showToast('Lesson saved.');
 		} catch {
 			showToast('Could not save lesson.');
 		}
@@ -72,21 +82,26 @@
 	<div class="grid">
 		<label>
 			Date
-			<input type="date" bind:value={date} />
+			<input type="date" bind:value={date} onblur={persistLessonMeta} />
 		</label>
 		<label>
 			Hours
-			<input type="number" min="0" step="0.25" bind:value={durationHours} />
+			<input type="number" min="0" step="0.25" bind:value={durationHours} onblur={persistLessonMeta} />
 		</label>
 		<label>
 			Title
-			<input type="text" bind:value={title} />
+			<input type="text" bind:value={title} onblur={persistLessonMeta} />
 		</label>
 		<label class="check">
-			<input type="checkbox" bind:checked={done} />
+			<input
+				type="checkbox"
+				bind:checked={done}
+				onchange={() => {
+					void persistLessonMeta();
+				}}
+			/>
 			Done
 		</label>
-		<button type="button" class="btn primary" onclick={saveMeta}>Save lesson</button>
 	</div>
 </section>
 
@@ -157,19 +172,6 @@
 		padding: 0.35rem 0.5rem;
 		border: 1px solid #c9ced6;
 		border-radius: 6px;
-	}
-	.btn {
-		padding: 0.45rem 0.75rem;
-		border: 1px solid #c9ced6;
-		background: #fff;
-		border-radius: 6px;
-		cursor: pointer;
-		height: fit-content;
-	}
-	.btn.primary {
-		background: #1a56b8;
-		color: #fff;
-		border-color: #1a56b8;
 	}
 	.list {
 		list-style: none;

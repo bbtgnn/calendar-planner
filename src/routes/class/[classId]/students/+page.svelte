@@ -49,8 +49,13 @@
 	async function saveEdit() {
 		const id = editingId;
 		if (id == null) return;
+		const name = editValue.trim();
+		if (!name) {
+			showToast('Name cannot be empty.');
+			return;
+		}
 		try {
-			await withRetry(() => updateStudent(id, editValue.trim()));
+			await withRetry(() => updateStudent(id, name));
 			editingId = null;
 			await refresh();
 		} catch {

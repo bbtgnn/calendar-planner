@@ -5,7 +5,7 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { toastMessage } from '$lib/stores/toast';
-	import { listClasses, createClass, deleteClassCascade } from '$lib/repos/classes.repo';
+	import { listClasses, createClass, deleteClassCascade, updateClass } from '$lib/repos/classes.repo';
 	import type { ClassRow } from '$lib/db/types';
 	import { withRetry } from '$lib/db/withRetry';
 	import { showToast } from '$lib/stores/toast';
@@ -47,6 +47,19 @@
 		}
 	}
 
+	async function onRenameClass() {
+		if (!routeClassId) return;
+		const current = classes.find((c) => c.id === routeClassId)?.name ?? '';
+		const name = window.prompt('Rename class', current);
+		if (!name?.trim() || name.trim() === current) return;
+		try {
+			await withRetry(() => updateClass(routeClassId, { name: name.trim() }));
+			await refreshClasses();
+		} catch {
+			showToast('Could not rename class.');
+		}
+	}
+
 	async function onDeleteClass() {
 		if (!routeClassId) return;
 		if (!window.confirm('Delete this class and all its data?')) return;
@@ -82,6 +95,7 @@
 			</select>
 			<button type="button" class="btn" onclick={onNewClass}>New class</button>
 			{#if routeClassId}
+				<button type="button" class="btn" onclick={onRenameClass}>Rename</button>
 				<button type="button" class="btn danger" onclick={onDeleteClass}>Delete class</button>
 			{/if}
 		{:else if !loading}
