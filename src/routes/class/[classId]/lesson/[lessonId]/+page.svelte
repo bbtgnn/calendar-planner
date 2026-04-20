@@ -6,7 +6,7 @@
 	import { listAbsentStudentIds, setAbsent } from '$lib/repos/attendance.repo';
 	import { withRetry } from '$lib/db/withRetry';
 	import { showToast } from '$lib/stores/toast';
-	import type { StudentRow } from '$lib/db/types';
+	import type { LessonSessionKind, StudentRow } from '$lib/db/types';
 
 	let { data }: { data: PageData } = $props();
 
@@ -14,6 +14,7 @@
 	let durationHours = $state(0);
 	let title = $state('');
 	let done = $state(false);
+	let sessionKind = $state<LessonSessionKind>('class');
 
 	/** Reseed form only when navigating to a different lesson (avoids clobbering in-progress edits). */
 	let loadedLessonId = $state('');
@@ -29,6 +30,7 @@
 		durationHours = data.lesson.durationHours;
 		title = data.lesson.title;
 		done = data.lesson.done;
+		sessionKind = data.lesson.sessionKind;
 	});
 
 	async function refresh() {
@@ -51,11 +53,27 @@
 					date,
 					durationHours: h,
 					title,
-					done
+					done,
+					sessionKind
 				})
 			);
 		} catch {
 			showToast('Could not save lesson.');
+		}
+	}
+
+	async function changeSessionKind(next: LessonSessionKind) {
+		const prev = sessionKind;
+		sessionKind = next;
+		try {
+			await withRetry(() => updateLesson(data.lesson.id, { sessionKind: next }));
+		} catch (e) {
+			sessionKind = prev;
+			if (String(e).includes('SESSION_KIND_EXTRA_BLOCKED_ABSENCES')) {
+				showToast('Clear all absences for this session before marking it as Extra.');
+			} else {
+				showToast('Could not update session kind.');
+			}
 		}
 	}
 
@@ -92,6 +110,19 @@
 			Title
 			<input type="text" bind:value={title} onblur={persistLessonMeta} />
 		</label>
+		<label>
+			Kind
+			<select
+				value={sessionKind}
+				onchange={(e) => {
+					const v = (e.currentTarget as HTMLSelectElement).value as LessonSessionKind;
+					void changeSessionKind(v);
+				}}
+			>
+				<option value="class">Class</option>
+				<option value="extra">Extra / 1:1</option>
+			</select>
+		</label>
 		<label class="check">
 			<input
 				type="checkbox"
@@ -107,7 +138,9 @@
 
 <section class="card">
 	<h2>Attendance</h2>
-	{#if students.length === 0}
+	{#if sessionKind === 'extra'}
+		<p class="muted">No class attendance for Extra / 1:1 sessions.</p>
+	{:else if students.length === 0}
 		<p class="muted">Add students on the Students tab to record absences.</p>
 	{:else}
 		<p class="hint">Everyone is present unless marked absent.</p>
@@ -168,7 +201,8 @@
 	}
 	input[type='date'],
 	input[type='number'],
-	input[type='text'] {
+	input[type='text'],
+	select {
 		padding: 0.35rem 0.5rem;
 		border: 1px solid #c9ced6;
 		border-radius: 6px;

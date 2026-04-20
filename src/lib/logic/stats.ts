@@ -9,7 +9,7 @@ export type LessonForContractStats = {
 	sessionKind: LessonSessionKind;
 };
 
-/** @deprecated Prefer LessonForContractStats for new code */
+/** Alias for docs / older references — same shape as `LessonForContractStats`. */
 export type LessonForStats = LessonForContractStats;
 
 export function sumScheduledHours(lessons: Pick<LessonForContractStats, 'durationHours'>[]): number {
