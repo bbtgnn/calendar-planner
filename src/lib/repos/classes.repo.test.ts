@@ -19,7 +19,8 @@ describe('classes.repo', () => {
 			date: '2026-04-01',
 			durationHours: 2,
 			title: 'L',
-			done: false
+			done: false,
+			sessionKind: 'class'
 		});
 		await db.absences.add({ id: `${lid}__${sid}`, lessonId: lid, studentId: sid });
 

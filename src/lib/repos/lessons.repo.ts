@@ -1,5 +1,5 @@
 import { db } from '$lib/db/client';
-import type { ClassId, LessonId, LessonRow } from '$lib/db/types';
+import type { ClassId, LessonId, LessonRow, LessonSessionKind } from '$lib/db/types';
 
 export async function listLessons(classId: ClassId): Promise<LessonRow[]> {
 	const rows = await db.lessons.where('classId').equals(classId).toArray();
@@ -16,6 +16,7 @@ export async function createLesson(input: {
 	date: string;
 	durationHours: number;
 	title: string;
+	sessionKind?: LessonSessionKind;
 }): Promise<LessonRow> {
 	const row: LessonRow = {
 		id: crypto.randomUUID(),
@@ -23,7 +24,8 @@ export async function createLesson(input: {
 		date: input.date,
 		durationHours: input.durationHours,
 		title: input.title || 'Lesson',
-		done: false
+		done: false,
+		sessionKind: input.sessionKind ?? 'class'
 	};
 	await db.lessons.add(row);
 	return row;
@@ -31,7 +33,7 @@ export async function createLesson(input: {
 
 export async function updateLesson(
 	id: LessonId,
-	patch: Partial<Pick<LessonRow, 'date' | 'durationHours' | 'title' | 'done'>>
+	patch: Partial<Pick<LessonRow, 'date' | 'durationHours' | 'title' | 'done' | 'sessionKind'>>
 ): Promise<void> {
 	await db.lessons.update(id, patch);
 }

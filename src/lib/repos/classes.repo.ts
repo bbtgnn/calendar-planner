@@ -12,11 +12,13 @@ export async function getClass(id: ClassId): Promise<ClassRow | undefined> {
 export async function createClass(input: {
 	name: string;
 	totalHoursTarget: number;
+	requiredStudentLessonHours?: number;
 }): Promise<ClassRow> {
 	const row: ClassRow = {
 		id: crypto.randomUUID(),
 		name: input.name,
 		totalHoursTarget: input.totalHoursTarget,
+		requiredStudentLessonHours: input.requiredStudentLessonHours ?? 0,
 		createdAt: Date.now()
 	};
 	await db.classes.add(row);
@@ -25,7 +27,7 @@ export async function createClass(input: {
 
 export async function updateClass(
 	id: ClassId,
-	patch: Partial<Pick<ClassRow, 'name' | 'totalHoursTarget'>>
+	patch: Partial<Pick<ClassRow, 'name' | 'totalHoursTarget' | 'requiredStudentLessonHours'>>
 ): Promise<void> {
 	await db.classes.update(id, patch);
 }

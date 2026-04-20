@@ -2,10 +2,14 @@ export type ClassId = string;
 export type StudentId = string;
 export type LessonId = string;
 
+export type LessonSessionKind = 'class' | 'extra';
+
 export type ClassRow = {
 	id: ClassId;
 	name: string;
 	totalHoursTarget: number;
+	/** Student lesson hours required (50-minute units). */
+	requiredStudentLessonHours: number;
 	createdAt: number;
 };
 
@@ -22,6 +26,7 @@ export type LessonRow = {
 	durationHours: number;
 	title: string;
 	done: boolean;
+	sessionKind: LessonSessionKind;
 };
 
 export type AbsenceRow = {

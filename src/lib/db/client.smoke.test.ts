@@ -8,6 +8,7 @@ describe('db', () => {
 			id,
 			name: 'Test',
 			totalHoursTarget: 10,
+			requiredStudentLessonHours: 0,
 			createdAt: Date.now()
 		});
 		const row = await db.classes.get(id);
