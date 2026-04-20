@@ -6,12 +6,20 @@
 	import { withRetry } from '$lib/db/withRetry';
 	import { showToast } from '$lib/stores/toast';
 	import {
-		sumScheduledHours,
+		sumScheduledTeacherHours,
 		remainingHours,
 		doneLessonCount,
-		scheduledLessonCount
+		scheduledLessonCount,
+		sumTeacherHoursForKind,
+		unplannedClassTeacherHours,
+		maxExtraTeacherHours,
+		remainingFlexTeacherHours,
+		totalUnscheduledContractTeacherHours,
+		studentHoursFromTeacherHours,
+		doneExtraSessionCount,
+		scheduledExtraSessionCount
 	} from '$lib/logic/stats';
-	import type { LessonRow } from '$lib/db/types';
+	import type { LessonRow, LessonSessionKind } from '$lib/db/types';
 
 	let { data }: { data: PageData } = $props();
 
@@ -20,15 +28,34 @@
 	let newDate = $state('');
 	let newHours = $state(2);
 	let newTitle = $state('Lesson');
+	let newSessionKind = $state<LessonSessionKind>('class');
 
 	let targetHours = $state(0);
+	let targetStudentLessonHours = $state(0);
 
 	$effect(() => {
 		targetHours = data.class.totalHoursTarget;
+		targetStudentLessonHours = data.class.requiredStudentLessonHours;
 	});
 
-	const scheduled = $derived(sumScheduledHours(lessons));
+	const scheduled = $derived(sumScheduledTeacherHours(lessons));
+	const tClass = $derived(sumTeacherHoursForKind(lessons, 'class'));
+	const tExtra = $derived(sumTeacherHoursForKind(lessons, 'extra'));
+
+	const unplannedClassTh = $derived(unplannedClassTeacherHours(targetStudentLessonHours, tClass));
+	const maxExtraTh = $derived(maxExtraTeacherHours(targetHours, targetStudentLessonHours));
+	const remainingFlexTh = $derived(
+		remainingFlexTeacherHours(targetHours, targetStudentLessonHours, tClass, tExtra)
+	);
+	const totalUnschedTh = $derived(
+		totalUnscheduledContractTeacherHours(targetHours, tClass, tExtra)
+	);
+
+	const studentHClass = $derived(studentHoursFromTeacherHours(tClass));
+	const studentHExtra = $derived(studentHoursFromTeacherHours(tExtra));
+
 	const remaining = $derived(remainingHours(targetHours, scheduled));
+
 	const dupDates = $derived.by(() => {
 		const counts = new Map<string, number>();
 		for (const l of lessons) {
@@ -48,17 +75,27 @@
 
 	onMount(refresh);
 
-	async function saveTarget() {
+	async function saveTargets() {
 		const t = Number(targetHours);
+		const m = Number(targetStudentLessonHours);
 		if (!Number.isFinite(t) || t < 0) {
-			showToast('Enter a valid non-negative hour target.');
+			showToast('Enter a valid non-negative contract (teacher) hour target.');
+			return;
+		}
+		if (!Number.isFinite(m) || m < 0) {
+			showToast('Enter a valid non-negative student lesson hours target.');
 			return;
 		}
 		try {
-			await withRetry(() => updateClass(data.class.id, { totalHoursTarget: t }));
-			showToast('Saved hour target.');
+			await withRetry(() =>
+				updateClass(data.class.id, {
+					totalHoursTarget: t,
+					requiredStudentLessonHours: m
+				})
+			);
+			showToast('Saved targets.');
 		} catch {
-			showToast('Could not save hour target.');
+			showToast('Could not save targets.');
 		}
 	}
 
@@ -78,12 +115,14 @@
 					classId: data.class.id,
 					date: newDate,
 					durationHours: h,
-					title: newTitle
+					title: newTitle,
+					sessionKind: newSessionKind
 				})
 			);
 			newDate = '';
 			newHours = 2;
 			newTitle = 'Lesson';
+			newSessionKind = 'class';
 			await refresh();
 		} catch {
 			showToast('Could not add lesson.');
@@ -115,21 +154,48 @@
 
 	<div class="grid">
 		<label>
-			Semester hour target
+			Contract hours (N, teacher / 60 min)
 			<input type="number" min="0" step="0.5" bind:value={targetHours} />
 		</label>
-		<button type="button" class="btn" onclick={saveTarget}>Save target</button>
+		<label>
+			Student lesson hours (M, 50 min units)
+			<input type="number" min="0" step="0.5" bind:value={targetStudentLessonHours} />
+		</label>
+		<button type="button" class="btn" onclick={saveTargets}>Save targets</button>
 	</div>
 
 	<div class="stats">
-		<p><strong>Scheduled hours:</strong> {scheduled.toFixed(2)}</p>
+		<p class="hero"><strong>Unplanned class (teacher h):</strong> {unplannedClassTh.toFixed(2)}</p>
+		<p class="hero">
+			<strong>Max extra pool (teacher h):</strong>
+			{maxExtraTh.toFixed(2)}
+			{#if maxExtraTh < 0}
+				<span class="warn">Contract N is below the minimum teacher hours needed for M — raise N or lower M.</span>
+			{/if}
+		</p>
+		<p class="hero"><strong>Remaining flex (teacher h):</strong> {remainingFlexTh.toFixed(2)}</p>
+		<p class="hero"><strong>Unscheduled on contract (teacher h):</strong> {totalUnschedTh.toFixed(2)}</p>
+
+		<p><strong>Scheduled (all sessions, teacher h):</strong> {scheduled.toFixed(2)}</p>
 		<p>
-			<strong>{remaining >= 0 ? 'Remaining' : 'Over by'}:</strong>
+			<strong>{remaining >= 0 ? 'Remaining vs contract' : 'Over contract by'}:</strong>
 			{Math.abs(remaining).toFixed(2)} h
 		</p>
 		<p>
-			<strong>Lessons done:</strong>
+			<strong>Class teacher h / Extra teacher h:</strong>
+			{tClass.toFixed(2)} / {tExtra.toFixed(2)}
+		</p>
+		<p>
+			<strong>Student h (derived) — class / extra:</strong>
+			{studentHClass.toFixed(2)} / {studentHExtra.toFixed(2)}
+		</p>
+		<p>
+			<strong>Class lessons done:</strong>
 			{doneLessonCount(lessons)} / {scheduledLessonCount(lessons)} ({pctDone}%)
+		</p>
+		<p>
+			<strong>Extra sessions done:</strong>
+			{doneExtraSessionCount(lessons)} / {scheduledExtraSessionCount(lessons)}
 		</p>
 	</div>
 
@@ -139,33 +205,41 @@
 </section>
 
 <section class="card">
-	<h2>Add lesson</h2>
+	<h2>Add session</h2>
 	<div class="grid add">
 		<label>
 			Date
 			<input type="date" bind:value={newDate} />
 		</label>
 		<label>
-			Hours
+			Hours (teacher)
 			<input type="number" min="0" step="0.25" bind:value={newHours} />
 		</label>
 		<label>
 			Title
 			<input type="text" bind:value={newTitle} />
 		</label>
+		<label>
+			Kind
+			<select bind:value={newSessionKind}>
+				<option value="class">Class</option>
+				<option value="extra">Extra / 1:1</option>
+			</select>
+		</label>
 		<button type="button" class="btn primary" onclick={addLesson}>Add</button>
 	</div>
 </section>
 
 <section class="card">
-	<h2>Lessons</h2>
+	<h2>Sessions</h2>
 	{#if lessons.length === 0}
-		<p class="muted">No lessons yet. Add one above.</p>
+		<p class="muted">No sessions yet. Add one above.</p>
 	{:else}
 		<div class="table-wrap">
 			<table>
 				<thead>
 					<tr>
+						<th>Kind</th>
 						<th>Date</th>
 						<th>Hours</th>
 						<th>Title</th>
@@ -176,6 +250,15 @@
 				<tbody>
 					{#each lessons as lesson (lesson.id)}
 						<tr>
+							<td>
+								<span
+									class="badge"
+									class:badge-class={lesson.sessionKind === 'class'}
+									class:badge-extra={lesson.sessionKind === 'extra'}
+								>
+									{lesson.sessionKind === 'class' ? 'Class' : 'Extra'}
+								</span>
+							</td>
 							<td>{lesson.date}</td>
 							<td>{lesson.durationHours}</td>
 							<td>{lesson.title}</td>
@@ -230,13 +313,41 @@
 	}
 	input[type='number'],
 	input[type='date'],
-	input[type='text'] {
+	input[type='text'],
+	select {
 		padding: 0.35rem 0.5rem;
 		border: 1px solid #c9ced6;
 		border-radius: 6px;
 	}
 	.stats p {
 		margin: 0.25rem 0;
+	}
+	.stats .hero {
+		font-size: 1rem;
+	}
+	.warn {
+		display: block;
+		color: #8a4b00;
+		font-size: 0.85rem;
+		font-weight: normal;
+		margin-top: 0.25rem;
+	}
+	.badge {
+		display: inline-block;
+		padding: 0.15rem 0.45rem;
+		border-radius: 999px;
+		font-size: 0.75rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+	}
+	.badge-class {
+		background: #e8f0fe;
+		color: #174ea6;
+	}
+	.badge-extra {
+		background: #f3e8fd;
+		color: #6a1b9a;
 	}
 	.btn {
 		padding: 0.4rem 0.75rem;
