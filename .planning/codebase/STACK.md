@@ -1,71 +1,78 @@
 # Technology Stack
 
-**Analysis Date:** 2026-04-20
+**Analysis Date:** 2026-04-21
 
 ## Languages
 
 **Primary:**
-- TypeScript (strict, `moduleResolution: "bundler"`) — application logic in `src/**/*.ts`, load functions, tests
-- Svelte — UI in `src/**/*.svelte` (Svelte 5 runes / component syntax per project version)
+- TypeScript - App logic, repositories, routes, and tests in `src/lib/**/*.ts` and `src/routes/**/*.ts`.
+- Svelte (Svelte 5 syntax) - UI components and page composition in `src/routes/**/*.svelte`.
 
 **Secondary:**
-- JavaScript — `svelte.config.js` (Kit config)
-- HTML — `src/app.html` shell
+- JavaScript (ESM config) - Build and framework config in `svelte.config.js`.
+- Markdown - Product/design and implementation plans in `README.md` and `docs/superpowers/**/*.md`.
 
 ## Runtime
 
 **Environment:**
-- **Browser** — primary execution: `src/routes/+layout.ts` sets `ssr = false` and `prerender = false`, so the app is a client-only SPA
-- **Node.js** — used implicitly by Vite during `bun run dev` / `bun run build` (Vite dev server and build tooling)
+- Bun (required by docs) - Dependency install and script runner in `README.md` and `package.json` scripts.
+- Browser runtime - Client-side app state and persistence (`localStorage`, `FileReader`, IndexedDB) in `src/lib/preferences/activeClass.ts`, `src/routes/class/[classId]/students/+page.svelte`, and `src/lib/db/client.ts`.
 
 **Package Manager:**
-- Bun — documented in `README.md`; `package.json` script `test` invokes `bun run test:unit`
-- Lockfile: `bun.lock` present
+- Bun (`bun install`, `bun run ...`) documented in `README.md`.
+- Lockfile: present (`bun.lock`).
 
 ## Frameworks
 
 **Core:**
-- SvelteKit `^2.57.0` — routing, `$app/*` imports, Vite integration (`@sveltejs/kit`)
-- Svelte `^5.55.2` — components and stores (e.g. `src/lib/stores/toast.ts` uses `svelte/store`)
-- Vite `^8.0.7` — bundler and dev server (`vite.config.ts`, `@sveltejs/vite-plugin-svelte`)
+- SvelteKit `^2.57.0` - Routing/layout/load boundaries in `src/routes/+layout.ts`, `src/routes/class/[classId]/+layout.ts`, and `src/routes/class/[classId]/lesson/[lessonId]/+page.ts`.
+- Svelte `^5.55.2` - Component state/derived/effect model in `src/routes/+layout.svelte` and class/lesson pages.
 
 **Testing:**
-- Vitest `^4.1.3` — unit tests; config embedded in `vite.config.ts` under `test.projects` (Node environment, `src/test/setup.ts`)
+- Vitest `^4.1.3` - Unit tests and smoke tests in `src/lib/**/*.test.ts`, configured in `vite.config.ts`.
+- fake-indexeddb `^6.2.5` - IndexedDB test environment shim in `src/test/setup.ts`.
 
 **Build/Dev:**
-- `@sveltejs/adapter-static` `^3.0.10` — static output; configured in `svelte.config.js` with `fallback: 'index.html'` for SPA routing
-- `svelte-check` `^4.4.6` — type and Svelte diagnostics (`bun run check`)
+- Vite `^8.0.7` - Dev server and build pipeline via `package.json` scripts and `vite.config.ts`.
+- `@sveltejs/adapter-static` `^3.0.10` - Static SPA output with fallback `index.html` in `svelte.config.js`.
+- `@sveltejs/vite-plugin-svelte` `^7.0.0` - Svelte plugin integration in `vite.config.ts`.
 
 ## Key Dependencies
 
 **Critical:**
-- `dexie` `^4.4.2` — IndexedDB wrapper; schema and singleton DB in `src/lib/db/client.ts` (database name `lesson-planner-db`)
+- `dexie` `^4.4.2` - Primary persistence abstraction over IndexedDB in `src/lib/db/client.ts`; all repositories use it (`src/lib/repos/*.repo.ts`).
+- `@sveltejs/kit` `^2.57.0` - Core app/runtime API (`error`, load typing, navigation/environment imports) in route modules and layouts.
 
 **Infrastructure:**
-- `fake-indexeddb` `^6.2.5` (dev) — polyfills IndexedDB in Vitest; loaded via `src/test/setup.ts`
-
-**Note:** `@sveltejs/adapter-auto` is listed in `package.json` devDependencies but the active adapter in `svelte.config.js` is `@sveltejs/adapter-static` only. Prefer aligning declared deps with `svelte.config.js` when touching tooling.
+- `typescript` `^6.0.2` - Strict type-checking and module resolution in `tsconfig.json`.
+- `svelte-check` `^4.4.6` - Static analysis via `check` scripts in `package.json`.
 
 ## Configuration
 
 **Environment:**
-- No application use of `import.meta.env`, `$env/static/*`, or `process.env` detected under `src/`
-- No `.env` files detected at repository root (nothing to load for local secrets in-tree)
+- No required `.env` files detected in repository root.
+- Application mode is client-only (`ssr = false`, `prerender = false`) in `src/routes/+layout.ts`.
 
 **Build:**
-- `svelte.config.js` — `vitePreprocess()`, static adapter, SPA fallback
-- `vite.config.ts` — `sveltekit()` plugin; Vitest project `server` with `setupFiles: ['src/test/setup.ts']`
-- `tsconfig.json` — extends `.svelte-kit/tsconfig.json`; strict TypeScript
+- SvelteKit static adapter and SPA fallback configured in `svelte.config.js`.
+- Vite + Vitest project setup in `vite.config.ts`.
+- TypeScript strictness and bundler module resolution in `tsconfig.json`.
 
 ## Platform Requirements
 
 **Development:**
-- Bun for install and scripts per `README.md` (`bun install`, `bun run dev`, `bun run test`, `bun run build`, `bun run check`)
-- A modern browser with IndexedDB and localStorage
+- Bun installed locally (per `README.md` commands).
+- Modern browser with IndexedDB and localStorage support (used in `src/lib/db/client.ts` and `src/lib/preferences/activeClass.ts`).
 
 **Production:**
-- Static file hosting: `bun run build` emits to `build/`; serve as static assets with `index.html` as SPA fallback (`README.md`)
+- Static file hosting target (`build/` output) with SPA fallback routing as documented in `README.md` and configured in `svelte.config.js`.
+
+## Newly Added Business-Logic Stack Notes
+
+- Contract-stat math for teacher/student hour conversions and class-vs-extra session semantics lives in `src/lib/logic/stats.ts`, with dedicated tests in `src/lib/logic/stats.test.ts`.
+- Dexie schema v2 migration backfills new fields (`requiredStudentLessonHours`, `sessionKind`) in `src/lib/db/client.ts`, enabling newer planning behavior on existing local data.
+- Repository-level rule enforcement for session-kind transitions (blocking Class -> Extra when absences exist) is implemented in `src/lib/repos/lessons.repo.ts` and validated in `src/lib/repos/lessons.repo.test.ts`.
 
 ---
 
-*Stack analysis: 2026-04-20*
+*Stack analysis: 2026-04-21*

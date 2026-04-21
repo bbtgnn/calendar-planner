@@ -1,70 +1,86 @@
 # External Integrations
 
-**Analysis Date:** 2026-04-20
+**Analysis Date:** 2026-04-21
 
 ## APIs & External Services
 
-**HTTP / SaaS:**
-- Not detected — no `fetch()` calls, no SDK imports for third-party APIs under `src/`
-- No `src/routes/**/+server.ts` handlers; no server-side integration layer in this codebase
+**Third-party HTTP APIs:**
+- Not detected in application code under `src/` (no `fetch` calls or API SDK imports found in TypeScript/Svelte sources).
+
+**Browser Platform APIs (runtime dependencies):**
+- IndexedDB - Persistent storage backing via Dexie in `src/lib/db/client.ts`.
+  - SDK/Client: `dexie` (`package.json`).
+  - Auth: Not applicable (browser-local database).
+- localStorage - Last active class preference in `src/lib/preferences/activeClass.ts`, invoked from `src/routes/class/[classId]/+layout.svelte` and `src/routes/+page.svelte`.
+  - SDK/Client: Native browser API.
+  - Auth: Not applicable.
+- FileReader - Local roster file import (`.txt` / `.csv`) in `src/routes/class/[classId]/students/+page.svelte`.
+  - SDK/Client: Native browser API.
+  - Auth: Not applicable.
 
 ## Data Storage
 
 **Databases:**
-- **IndexedDB (client)** — primary persistence via Dexie (`src/lib/db/client.ts`)
-  - Database name: `lesson-planner-db`
-  - Tables: `classes`, `students`, `lessons`, `absences` (version 1 schema in `LessonPlannerDB`)
-  - Access pattern: repository modules under `src/lib/repos/*.repo.ts` import `db` from `src/lib/db/client.ts`
+- IndexedDB (in-browser), wrapped by Dexie.
+  - Connection: Not applicable (no server connection string).
+  - Client: `LessonPlannerDB` in `src/lib/db/client.ts`.
+  - Schema usage: `classes`, `students`, `lessons`, `absences` tables defined in `src/lib/db/client.ts`; row contracts in `src/lib/db/types.ts`.
 
 **File Storage:**
-- Local filesystem only for **build output** (`build/` after `bun run build`). Application data is not written to disk by the app itself.
+- Local filesystem only for user-selected import files during session (`FileReader` in `src/routes/class/[classId]/students/+page.svelte`).
+- No remote object storage integration detected.
 
 **Caching:**
-- Browser-managed storage only (IndexedDB + `localStorage`); no separate cache service
+- None as a separate service; persistence is direct IndexedDB access through repositories in `src/lib/repos/*.repo.ts`.
 
 ## Authentication & Identity
 
 **Auth Provider:**
-- None — no login, sessions, OAuth, or identity SDKs in `package.json` or `src/`
+- Custom: none (no account system, token flow, or identity provider integration detected).
+  - Implementation: App is local/browser-only by design in `README.md` and `docs/superpowers/specs/2026-04-20-lesson-planner-design.md`.
 
 ## Monitoring & Observability
 
 **Error Tracking:**
-- None — no Sentry, Datadog, or similar in dependencies or `src/`
+- None (no Sentry/Datadog/Bugsnag SDK usage detected).
 
 **Logs:**
-- Not applicable at scale; client-side only. Use browser devtools when debugging.
+- User-facing in-app transient feedback through toast store (`src/lib/stores/toast.ts`) and route-level error catch paths in:
+  - `src/routes/+layout.svelte`
+  - `src/routes/class/[classId]/+page.svelte`
+  - `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte`
+  - `src/routes/class/[classId]/students/+page.svelte`
 
 ## CI/CD & Deployment
 
 **Hosting:**
-- Not defined in-repo — `README.md` describes generic static hosting of `build/` with SPA fallback. No `vercel.json`, `netlify.toml`, or platform-specific config detected.
+- Static hosting target inferred from adapter-static config in `svelte.config.js` and build output guidance in `README.md` (`build/` directory with SPA fallback).
 
 **CI Pipeline:**
-- None detected — no `.github/workflows/*.yml` or other CI config in the project root.
+- Not detected (`.github/workflows/` absent).
 
 ## Environment Configuration
 
 **Required env vars:**
-- None for the current application — no `PUBLIC_*` or server env consumption in `src/`
+- None detected for runtime or integrations (no `.env*` files and no `process.env`/`import.meta.env` usage surfaced in `src/`).
 
 **Secrets location:**
-- Not applicable for the shipped app (offline-first browser storage). If future features add backends, introduce `.env` handling per SvelteKit docs and keep secrets out of git.
+- Not applicable for current architecture (no external secret-backed integrations).
 
 ## Webhooks & Callbacks
 
 **Incoming:**
-- None — no API routes or edge handlers
+- None detected (no webhook endpoint handlers; app is client-only with `ssr = false` in `src/routes/+layout.ts`).
 
 **Outgoing:**
-- None — no webhook emitters or background jobs
+- None detected (no outbound webhook POST integrations in app source).
 
-## Browser APIs (not external services, but integration surface)
+## Integration Notes For New Business Logic
 
-When extending the app, prefer existing patterns:
-- **IndexedDB** — via `dexie` in `src/lib/db/client.ts`
-- **localStorage** — last-opened class id in `src/lib/preferences/activeClass.ts` (key `lesson-planner:last-class-id`)
+- Contract planning metrics (teacher vs student hour transforms, flex pool, class/extra split) are pure local computation in `src/lib/logic/stats.ts`; no external analytics service dependency.
+- Session-kind transition guard that blocks `class` -> `extra` when absences exist is enforced through local Dexie transactions in `src/lib/repos/lessons.repo.ts`.
+- Dexie v2 upgrade path that backfills new domain fields is implemented in `src/lib/db/client.ts`, so existing local datasets can adopt newer contract logic without remote migration tooling.
 
 ---
 
-*Integration audit: 2026-04-20*
+*Integration audit: 2026-04-21*
