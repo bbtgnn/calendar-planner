@@ -235,14 +235,14 @@
 		opacity: 0.38;
 		background: #f4f4f4;
 	}
-	/** Leading/trailing week days from other months, still inside semester: muted cell, dots visible */
+	/** Leading/trailing week days from other months, still inside semester: muted cell, dots fainter */
 	.cell.out-month {
-		opacity: 0.78;
 		background: #f0f2f5;
 		border-color: #e0e3e8;
 	}
 	.cell.out-month .dnum {
 		color: #5f6368;
+		opacity: 0.88;
 	}
 	.dnum {
 		font-weight: 600;
@@ -262,6 +262,9 @@
 		height: 5px;
 		border-radius: 50%;
 		font-style: normal;
+	}
+	.cell.out-month .dots i.dot {
+		opacity: 0.35;
 	}
 	i.dot.class {
 		background: var(--dot-class);
