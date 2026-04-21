@@ -6,12 +6,13 @@
 
 ```text
 calendar-planner/
-├── src/                      # Application source (routes, domain logic, persistence)
-├── static/                   # Static assets served directly
-├── docs/                     # Product specs and implementation plans
-├── .planning/codebase/       # Generated codebase mapping documents
-├── svelte.config.js          # SvelteKit adapter/runtime behavior
-├── vite.config.ts            # Build + Vitest configuration
+├── src/                      # Runtime app code (routes, repos, db, logic, stores)
+├── static/                   # Static files served as-is
+├── docs/superpowers/         # Product specs and implementation plans
+├── .planning/codebase/       # Architecture/stack/testing mapping docs
+├── .cursor/skills/           # Project workflow skills for GSD commands
+├── svelte.config.js          # SvelteKit adapter and preprocessing config
+├── vite.config.ts            # Vite + Vitest configuration
 ├── tsconfig.json             # TypeScript compiler settings
 └── package.json              # Scripts and dependency manifest
 ```
@@ -19,24 +20,24 @@ calendar-planner/
 ## Directory Purposes
 
 **`src/routes/`:**
-- Purpose: Route-level UI, route loaders, and app shell.
-- Contains: `+layout.svelte`, `+page.svelte`, nested dynamic route directories.
-- Key files: `src/routes/+layout.svelte`, `src/routes/class/[classId]/+layout.ts`, `src/routes/class/[classId]/+page.svelte`.
+- Purpose: SvelteKit route tree and route-local orchestration.
+- Contains: App shell routes, class workspace routes, and loader files.
+- Key files: `src/routes/+layout.svelte`, `src/routes/+page.svelte`, `src/routes/class/[classId]/+layout.ts`, `src/routes/class/[classId]/+page.svelte`, `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte`.
 
 **`src/lib/repos/`:**
-- Purpose: Persistence-facing CRUD APIs and transactional business rules.
-- Contains: One repo per bounded domain (`classes`, `lessons`, `students`, `attendance`).
-- Key files: `src/lib/repos/classes.repo.ts`, `src/lib/repos/lessons.repo.ts`, `src/lib/repos/students.repo.ts`, `src/lib/repos/attendance.repo.ts`.
+- Purpose: Data-access APIs and write invariants.
+- Contains: Domain repositories for class, lesson, student, and attendance entities.
+- Key files: `src/lib/repos/classes.repo.ts`, `src/lib/repos/lessons.repo.ts`, `src/lib/repos/students.repo.ts`, `src/lib/repos/attendance.repo.ts`, `src/lib/repos/lessons.repo.test.ts`.
 
 **`src/lib/db/`:**
-- Purpose: Data schema/types and database utilities.
-- Contains: Dexie client, row type definitions, retry utility, DB tests.
+- Purpose: Persistent model contracts, Dexie schema, and DB utilities.
+- Contains: Table type definitions, schema versioning/migrations, retry helper, smoke test.
 - Key files: `src/lib/db/client.ts`, `src/lib/db/types.ts`, `src/lib/db/withRetry.ts`.
 
 **`src/lib/logic/`:**
 - Purpose: Pure domain logic independent of UI and persistence.
-- Contains: Contract/stat calculations and roster import parsing.
-- Key files: `src/lib/logic/stats.ts`, `src/lib/logic/rosterImport.ts`.
+- Contains: Contract/stat calculations, session-kind UI behavior helpers, import parsing.
+- Key files: `src/lib/logic/stats.ts`, `src/lib/logic/sessionKindUi.ts`, `src/lib/logic/rosterImport.ts`.
 
 **`src/lib/preferences/` and `src/lib/stores/`:**
 - Purpose: Cross-route client state helpers.
@@ -48,6 +49,11 @@ calendar-planner/
 - Contains: Environment setup for browser APIs in node tests.
 - Key files: `src/test/setup.ts`.
 
+**`docs/superpowers/specs/` and `docs/superpowers/plans/`:**
+- Purpose: Product-level decisions and implementation plans that drive code changes.
+- Contains: Dated specification and plan markdown files.
+- Key files: `docs/superpowers/specs/2026-04-21-skipped-lesson-kind-design.md`, `docs/superpowers/plans/2026-04-21-skipped-lesson-kind.md`.
+
 ## Key File Locations
 
 **Entry Points:**
@@ -56,6 +62,8 @@ calendar-planner/
 - `src/routes/class/[classId]/+page.svelte`: schedule + contract stats + session list.
 - `src/routes/class/[classId]/students/+page.svelte`: roster CRUD/import UI.
 - `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte`: lesson details + attendance.
+- `src/routes/class/[classId]/+layout.ts`: class existence guard and class payload loader.
+- `src/routes/class/[classId]/lesson/[lessonId]/+page.ts`: lesson ownership guard.
 
 **Configuration:**
 - `package.json`: runtime scripts (`dev`, `build`, `check`, `test`).
@@ -65,6 +73,7 @@ calendar-planner/
 
 **Core Logic:**
 - `src/lib/logic/stats.ts`: contract/business math and lesson/session counts.
+- `src/lib/logic/sessionKindUi.ts`: kind-specific UI rules (`class`/`extra`/`skipped`).
 - `src/lib/logic/rosterImport.ts`: import parsing strategy for TXT/CSV.
 - `src/lib/repos/lessons.repo.ts`: lesson lifecycle and session-kind guardrails.
 
@@ -78,6 +87,7 @@ calendar-planner/
 - SvelteKit route files use framework conventions (`+layout.svelte`, `+page.svelte`, `+layout.ts`, `+page.ts`).
 - Repository modules use `<domain>.repo.ts` naming (`classes.repo.ts`, `lessons.repo.ts`).
 - Logic modules are lower camel-like nouns in plain `.ts` files (`stats.ts`, `rosterImport.ts`).
+- Session-kind helper module follows domain noun naming (`sessionKindUi.ts`).
 - Tests mirror implementation names with `.test.ts` suffix (`stats.test.ts`, `lessons.repo.test.ts`).
 
 **Directories:**
@@ -93,10 +103,12 @@ calendar-planner/
 **Persistence and Business Rules (`src/lib/repos/` + `src/lib/db/`):**
 - Put all table-level writes and transaction boundaries in repos.
 - Keep schema/version migration details isolated in `src/lib/db/client.ts`.
+- Keep session-kind persistence invariants (including `skipped` coercion and absence cleanup) in `src/lib/repos/lessons.repo.ts`.
 
 **Pure Calculations and Parsing (`src/lib/logic/`):**
 - Add deterministic helpers here when logic does not require IO.
 - Reuse from routes via imports; keep these modules side-effect free for testing.
+- Use `src/lib/logic/sessionKindUi.ts` for any new kind-specific UI rules instead of embedding conditionals in multiple route files.
 
 ## Where to Add New Code
 
@@ -115,6 +127,12 @@ calendar-planner/
 - Repo API updates: relevant files in `src/lib/repos/`.
 - Route form bindings: corresponding `src/routes/**/+page.svelte`.
 
+**New session kind behavior (e.g., extension of `skipped` rules):**
+- UI behavior helpers: `src/lib/logic/sessionKindUi.ts`.
+- Persistence invariants and transitions: `src/lib/repos/lessons.repo.ts`.
+- Schedule and detail bindings: `src/routes/class/[classId]/+page.svelte` and `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte`.
+- Regression tests: `src/lib/logic/sessionKindUi.test.ts`, `src/lib/repos/lessons.repo.test.ts`, `src/lib/logic/stats.test.ts`.
+
 **Utilities and shared UI state:**
 - Shared helper: `src/lib/logic/` (pure) or `src/lib/db/` (DB utility).
 - Persisted preference: `src/lib/preferences/`.
@@ -127,6 +145,11 @@ calendar-planner/
 - Generated: Yes (by mapping agents/workflows).
 - Committed: Yes.
 
+**`.cursor/skills/`:**
+- Purpose: Project-local GSD skill definitions and workflow adapters.
+- Generated: No.
+- Committed: Yes.
+
 **`.svelte-kit/`:**
 - Purpose: SvelteKit generated build/type artifacts.
 - Generated: Yes.
@@ -137,11 +160,13 @@ calendar-planner/
 - Generated: Yes.
 - Committed: No (distribution artifact).
 
-## Architectural Impact Orientation (New Business Logic)
+## Architectural Impact Orientation (Skipped Addition)
 
-- Session kind (`class` vs `extra`) introduces a cross-module path: UI controls in `src/routes/class/[classId]/+page.svelte` and `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte` -> persistence validation in `src/lib/repos/lessons.repo.ts` -> schema support in `src/lib/db/types.ts` and `src/lib/db/client.ts`.
+- Session kind now has three supported values (`class`, `extra`, `skipped`) in `src/lib/db/types.ts`, and both schedule/detail routes expose the `skipped` path in selects (`src/routes/class/[classId]/+page.svelte`, `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte`).
+- Skipped semantics are split by responsibility: route-level behavior flags in `src/lib/logic/sessionKindUi.ts`, hard persistence invariants in `src/lib/repos/lessons.repo.ts`.
+- Transitioning a lesson to `skipped` crosses modules and tables: UI intent in route file -> `updateLesson` transaction in repo -> absence deletion in `absences` table via `src/lib/db/client.ts`.
 - Contract metrics (teacher/student-hour model) are intentionally centralized in `src/lib/logic/stats.ts`; new schedule metrics should extend this module first, then bind into route-level `$derived` values.
-- Attendance behavior now depends on lesson kind; changes touching attendance must validate both `src/lib/repos/attendance.repo.ts` and lesson-kind transition logic in `src/lib/repos/lessons.repo.ts`.
+- Attendance visibility now depends on session kind helper rules (`attendanceVisibleForKind`) and repository transition behavior; attendance-related changes must be validated in both `src/lib/repos/attendance.repo.ts` and `src/lib/repos/lessons.repo.ts`.
 
 ---
 

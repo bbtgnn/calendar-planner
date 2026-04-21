@@ -24,7 +24,7 @@
 - IndexedDB (in-browser), wrapped by Dexie.
   - Connection: Not applicable (no server connection string).
   - Client: `LessonPlannerDB` in `src/lib/db/client.ts`.
-  - Schema usage: `classes`, `students`, `lessons`, `absences` tables defined in `src/lib/db/client.ts`; row contracts in `src/lib/db/types.ts`.
+  - Schema usage: `classes`, `students`, `lessons`, `absences` tables defined in `src/lib/db/client.ts`; row contracts and session kind union (`class | extra | skipped`) in `src/lib/db/types.ts`.
 
 **File Storage:**
 - Local filesystem only for user-selected import files during session (`FileReader` in `src/routes/class/[classId]/students/+page.svelte`).
@@ -78,8 +78,10 @@
 ## Integration Notes For New Business Logic
 
 - Contract planning metrics (teacher vs student hour transforms, flex pool, class/extra split) are pure local computation in `src/lib/logic/stats.ts`; no external analytics service dependency.
-- Session-kind transition guard that blocks `class` -> `extra` when absences exist is enforced through local Dexie transactions in `src/lib/repos/lessons.repo.ts`.
-- Dexie v2 upgrade path that backfills new domain fields is implemented in `src/lib/db/client.ts`, so existing local datasets can adopt newer contract logic without remote migration tooling.
+- Session-kind transition guard that blocks `class -> extra` when absences exist is enforced through local Dexie transactions in `src/lib/repos/lessons.repo.ts`.
+- The new `skipped` flow is fully local and integration-free: create/update coercion to `durationHours = 0`, done lockout, attendance suppression, and absence cleanup are implemented in `src/lib/repos/lessons.repo.ts` and `src/lib/logic/sessionKindUi.ts`.
+- `skipped` UX integration is wired in both schedule and detail route surfaces via kind selectors and contextual labels/messages in `src/routes/class/[classId]/+page.svelte` and `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte`.
+- Dexie v2 upgrade path backfills `sessionKind` for historical rows in `src/lib/db/client.ts`, so existing local datasets adopt the new status without any remote migration tooling.
 
 ---
 

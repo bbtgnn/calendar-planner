@@ -15,11 +15,11 @@
 ## Runtime
 
 **Environment:**
-- Bun (required by docs) - Dependency install and script runner in `README.md` and `package.json` scripts.
+- Bun - Dependency install and script runner in `README.md` and `package.json` scripts.
 - Browser runtime - Client-side app state and persistence (`localStorage`, `FileReader`, IndexedDB) in `src/lib/preferences/activeClass.ts`, `src/routes/class/[classId]/students/+page.svelte`, and `src/lib/db/client.ts`.
 
 **Package Manager:**
-- Bun (`bun install`, `bun run ...`) documented in `README.md`.
+- Bun (`bun install`, `bun run ...`) documented in `README.md` and `package.json`.
 - Lockfile: present (`bun.lock`).
 
 ## Frameworks
@@ -71,7 +71,9 @@
 
 - Contract-stat math for teacher/student hour conversions and class-vs-extra session semantics lives in `src/lib/logic/stats.ts`, with dedicated tests in `src/lib/logic/stats.test.ts`.
 - Dexie schema v2 migration backfills new fields (`requiredStudentLessonHours`, `sessionKind`) in `src/lib/db/client.ts`, enabling newer planning behavior on existing local data.
-- Repository-level rule enforcement for session-kind transitions (blocking Class -> Extra when absences exist) is implemented in `src/lib/repos/lessons.repo.ts` and validated in `src/lib/repos/lessons.repo.test.ts`.
+- Repository-level rule enforcement for session-kind transitions (blocking `class -> extra` when absences exist) is implemented in `src/lib/repos/lessons.repo.ts` and validated in `src/lib/repos/lessons.repo.test.ts`.
+- The `skipped` session kind is now first-class in the domain type (`src/lib/db/types.ts`), repository persistence (`src/lib/repos/lessons.repo.ts`), and UI workflows (`src/routes/class/[classId]/+page.svelte`, `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte`).
+- `skipped` behavior is normalized at the stack level: duration is forced to `0`, done-state editing is disabled, attendance is hidden, and existing absences are deleted on conversion in `src/lib/repos/lessons.repo.ts` and `src/lib/logic/sessionKindUi.ts`.
 
 ---
 

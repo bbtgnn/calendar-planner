@@ -5,99 +5,92 @@
 ## Naming Patterns
 
 **Files:**
-- Use lowercase feature names with dot-suffix role markers for data modules: `src/lib/repos/classes.repo.ts`, `src/lib/repos/lessons.repo.ts`, `src/lib/db/withRetry.ts`.
-- Use SvelteKit route conventions for pages/layout/loaders: `src/routes/class/[classId]/+page.svelte`, `src/routes/class/[classId]/+layout.ts`, `src/routes/class/[classId]/lesson/[lessonId]/+page.ts`.
-- Use colocated test files with `.test.ts`: `src/lib/logic/stats.test.ts`, `src/lib/repos/lessons.repo.test.ts`.
+- Use lowercase feature filenames with role suffixes for data access and logic modules: `src/lib/repos/lessons.repo.ts`, `src/lib/repos/students.repo.ts`, `src/lib/logic/sessionKindUi.ts`.
+- Use SvelteKit route naming (`+page.svelte`, `+layout.ts`, `+page.ts`) under nested route directories: `src/routes/class/[classId]/+page.svelte`, `src/routes/class/[classId]/lesson/[lessonId]/+page.ts`.
+- Keep tests co-located with source using `.test.ts`: `src/lib/repos/lessons.repo.test.ts`, `src/lib/logic/stats.test.ts`, `src/lib/logic/sessionKindUi.test.ts`.
 
 **Functions:**
-- Use `camelCase` for functions and handlers (`createLesson`, `deleteClassCascade`, `persistLessonMeta`, `changeSessionKind`).
-- Use verb-led names for side-effecting functions (`addStudent`, `updateClass`, `setAbsent`) and noun/metric names for pure calculations (`remainingHours`, `maxExtraTeacherHours`).
+- Use `camelCase` and verb-first naming for side-effecting functions (`createLesson`, `updateLesson`, `replaceStudents`, `persistLessonMeta`).
+- Use intent-focused pure-function names for calculations and UI derivations (`remainingFlexTeacherHours`, `labelForTitleField`, `hoursEditableForKind`).
 
 **Variables:**
-- Use concise domain symbols for intermediate math in business logic only when scoped and documented (`tClass`, `tExtra`, `cMin` in `src/lib/logic/stats.ts` and `src/routes/class/[classId]/+page.svelte`).
-- Use explicit booleans and nullable sentinels for UI state (`loading`, `empty`, `editingId`, `fileKind`).
+- Use explicit state names in Svelte rune state (`newSessionKind`, `previewSkipped`, `loadedLessonId`, `targetStudentLessonHours`) in `src/routes/class/[classId]/**/*.svelte`.
+- Use concise local symbols only for bounded contract math (`tClass`, `tExtra`, `cMin`) in `src/lib/logic/stats.ts` and `src/routes/class/[classId]/+page.svelte`.
 
 **Types:**
-- Centralize domain row/id/value types in `src/lib/db/types.ts`.
-- Use explicit exported type aliases for clarity and migration compatibility (`LessonForContractStats`, `LessonForStats` in `src/lib/logic/stats.ts`).
+- Keep canonical domain unions and row types in `src/lib/db/types.ts`; extend behavior around `LessonSessionKind` there first.
+- Use narrow return types for parser and helper APIs (`ImportNamesResult` in `src/lib/logic/rosterImport.ts`, literal-return helpers in `src/lib/logic/sessionKindUi.ts`).
 
 ## Code Style
 
 **Formatting:**
-- No standalone formatter config detected (`.prettierrc*` and `eslint*` are not present); follow existing style in repository.
-- Match current formatting: tabs for indentation, semicolons, single quotes, trailing commas in multiline objects/arrays (e.g. `src/lib/repos/lessons.repo.ts`, `src/routes/+layout.svelte`).
+- No dedicated formatter config is detected (`.prettierrc*`, `eslint.config.*`, `.eslintrc*` are not present); mirror repository style.
+- Use tabs, semicolons, single quotes, and trailing commas in multiline literals as shown in `src/lib/repos/lessons.repo.ts` and `src/routes/class/[classId]/+page.svelte`.
 
 **Linting:**
-- Static checks are TypeScript + Svelte checks via `bun run check` (`package.json`, `tsconfig.json`).
-- Keep `strict` TypeScript compatibility (`tsconfig.json`) and avoid implicit `any`.
+- Treat `bun run check` from `package.json` as the quality gate for TS/Svelte static correctness.
+- Keep strict TypeScript compatibility from `tsconfig.json` (`"strict": true`, `"checkJs": true`) and avoid implicit `any`.
 
 ## Import Organization
 
 **Order:**
-1. Framework/runtime imports (`@sveltejs/kit`, `$app/*`, `svelte`).
-2. App aliases (`$lib/*`) for repositories, logic, stores.
-3. Type-only imports grouped near runtime imports (`import type ...`).
-4. Relative imports for same-folder units/tests (`./stats`, `./rosterImport`).
+1. Framework/runtime imports (`svelte`, `@sveltejs/*`, `$app/*`) as in `src/routes/class/[classId]/+page.svelte`.
+2. Internal feature imports via `$lib/*` (`$lib/repos/*`, `$lib/logic/*`, `$lib/db/*`, `$lib/stores/*`).
+3. Type-only imports (`import type`) after runtime imports in the same module.
+4. Relative imports for same-folder code/tests (`./stats`, `./rosterImport`, `./lessons.repo`).
 
 **Path Aliases:**
-- Prefer `$lib` for internal shared modules (`$lib/repos/*`, `$lib/db/*`, `$lib/logic/*`).
-- Use `$app` aliases only for SvelteKit runtime APIs (`$app/navigation`, `$app/state`, `$app/environment`).
+- Use `$lib` for app modules; avoid deep relative paths for shared code (`src/routes/class/[classId]/lesson/[lessonId]/+page.svelte`).
+- Use `$app` aliases only for SvelteKit runtime surfaces (`$app/paths` in `src/routes/class/[classId]/+page.svelte`).
 
 ## Error Handling
 
 **Patterns:**
-- Route loaders fail fast with HTTP errors for missing entities (`src/routes/class/[classId]/+layout.ts`, `src/routes/class/[classId]/lesson/[lessonId]/+page.ts`).
-- Repository layer throws domain-specific `Error` messages for business rules (`SESSION_KIND_EXTRA_BLOCKED_ABSENCES` in `src/lib/repos/lessons.repo.ts`).
-- UI handlers wrap persistence calls in `try/catch`, show user-safe messages through `showToast`, and avoid leaking raw errors (`src/routes/class/[classId]/+page.svelte`, `src/routes/class/[classId]/students/+page.svelte`).
-- Use `withRetry` for write flows where transient IndexedDB failures are acceptable (`src/lib/db/withRetry.ts` and usage across `src/routes/**/*.svelte`).
+- Wrap UI-side writes in `try/catch` and surface user messages with `showToast` (`src/routes/class/[classId]/+page.svelte`, `src/routes/class/[classId]/students/+page.svelte`).
+- Use domain-specific error strings in repos for rule violations (`SESSION_KIND_EXTRA_BLOCKED_ABSENCES` in `src/lib/repos/lessons.repo.ts`), then map to UX-friendly messages in route components.
+- Enforce cross-table consistency with Dexie transactions in repository mutators (`src/lib/repos/lessons.repo.ts`, `src/lib/repos/classes.repo.ts`, `src/lib/repos/students.repo.ts`).
+- Keep `skipped` session invariants in data layer, not only UI: coerce `durationHours` to `0` and clear absences on transition in `src/lib/repos/lessons.repo.ts`.
 
 ## Logging
 
-**Framework:** None detected (`console.*` logging pattern is not used in `src/`).
+**Framework:** UI toast store (`src/lib/stores/toast.ts`); console logging is not a standard pattern.
 
 **Patterns:**
-- Favor user feedback through UI toast state (`src/lib/stores/toast.ts`) instead of console logging.
-- Preserve deterministic thrown messages in repository/business logic for callers/tests to assert.
+- Prefer user-facing toast messages over `console.*` in route actions.
+- Keep thrown errors deterministic for assertion in tests (`src/lib/repos/lessons.repo.test.ts`, `src/lib/db/withRetry.test.ts`).
 
 ## Comments
 
 **When to Comment:**
-- Add short comments for domain conversions and contract formulas (`src/lib/logic/stats.ts`).
-- Add rationale comments around subtle state-sync behavior (`loadedLessonId` reseed guard in `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte`).
+- Add short rationale comments only when domain math or state guards are non-obvious (`src/lib/logic/stats.ts`, `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte`).
+- Do not add comments for straightforward CRUD or obvious JSX/Svelte markup paths.
 
 **JSDoc/TSDoc:**
-- Use brief block comments on exported utility functions where domain semantics are non-obvious (teacher-hour vs student-hour conversions in `src/lib/logic/stats.ts`).
-- Avoid redundant comments on straightforward CRUD operations in repo modules.
+- Use concise block comments on exported utility functions when business semantics need context (`src/lib/logic/stats.ts`).
+- Keep comments synchronized with contract behavior, including `class`/`extra`/`skipped` session distinctions.
 
 ## Function Design
 
-**Size:**
-- Keep business-logic functions small and composable (`src/lib/logic/stats.ts`, `src/lib/logic/rosterImport.ts`).
-- Keep repository functions single-purpose and table-focused, using Dexie transactions only when cross-table consistency is required (`src/lib/repos/classes.repo.ts`, `src/lib/repos/students.repo.ts`).
+**Size:** 
+- Keep logic helpers small and pure in `src/lib/logic/*.ts`; compose behavior through focused exported functions.
+- Keep repository functions single-responsibility and table-scoped, with transactions only where required for atomicity.
 
 **Parameters:**
-- Prefer typed object parameters when calls have 3+ fields (`createLesson`, `createClass`).
-- Use scalar parameters for focused updates (`updateStudent(id, name)`, `setAbsent(lessonId, studentId, absent)`).
+- Use object parameters for create/update APIs with multiple optional fields (`createLesson`, `updateLesson` in `src/lib/repos/lessons.repo.ts`).
+- Use scalar parameters for targeted operations (`setAbsent(lessonId, studentId, absent)` in `src/lib/repos/attendance.repo.ts`).
 
 **Return Values:**
-- Return created rows from create operations and `Promise<void>` for updates/deletes (`src/lib/repos/*.repo.ts`).
-- Return pure computed numbers/collections from logic functions without side effects (`src/lib/logic/stats.ts`, `src/lib/logic/rosterImport.ts`).
+- Return created entities from create methods and `Promise<void>` from mutation-only updates/deletes (`src/lib/repos/*.repo.ts`).
+- Return deterministic scalar/object outputs from pure logic (`src/lib/logic/rosterImport.ts`, `src/lib/logic/sessionKindUi.ts`, `src/lib/logic/stats.ts`).
 
 ## Module Design
 
 **Exports:**
-- Use named exports exclusively; no default exports in app modules (`src/lib/repos/*.ts`, `src/lib/logic/*.ts`, `src/lib/db/*.ts`).
-- Keep cross-layer boundaries explicit: UI imports repos/logic, repos import db/types, logic modules stay persistence-agnostic.
+- Use named exports for feature modules (`src/lib/repos/*.ts`, `src/lib/logic/*.ts`, `src/lib/db/*.ts`); avoid default exports outside SvelteKit config files.
+- Keep route components as orchestration layers that call `$lib` modules; keep persistence and business rules outside route files.
 
 **Barrel Files:**
-- Barrel usage is minimal (`src/lib/index.ts` placeholder only); import concrete modules directly to keep ownership clear.
-
-## Architecture & Maintainability Conventions
-
-- Keep route components thin on persistence details by delegating DB operations to `src/lib/repos/*` and computation to `src/lib/logic/*`.
-- Preserve transaction boundaries for cascading deletes and consistency (`deleteClassCascade`, `deleteLessonCascade`, `replaceStudents`).
-- Keep client-only assumptions explicit in app shell (`src/routes/+layout.ts` sets `ssr = false`, `prerender = false`) and preference helpers guarded for browser runtime (`src/lib/preferences/activeClass.ts`).
-- Maintain deterministic ordering before rendering lists (`listLessons` sorts by date/id, `listStudents` sorts by name) to keep UI stable and tests predictable.
+- Barrel usage is minimal (`src/lib/index.ts`); prefer direct module imports to preserve explicit ownership boundaries.
 
 ---
 

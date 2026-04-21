@@ -5,11 +5,11 @@
 ## Test Framework
 
 **Runner:**
-- Vitest `^4.1.3` (`package.json`).
-- Config: `vite.config.ts` (single `server` project with `environment: 'node'`, `expect.requireAssertions: true`, setup file `src/test/setup.ts`).
+- Vitest `^4.1.3` from `package.json`.
+- Config: `vite.config.ts` with one `server` project (`environment: 'node'`, `setupFiles: ['src/test/setup.ts']`, include `src/**/*.{test,spec}.{js,ts}`).
 
 **Assertion Library:**
-- Vitest built-in `expect`/matcher API (`src/lib/**/*.test.ts`).
+- Vitest built-in `expect` matcher API in `src/lib/**/*.test.ts`.
 
 **Run Commands:**
 ```bash
@@ -21,11 +21,11 @@ bun run check             # Type + Svelte static checks (non-test quality gate)
 ## Test File Organization
 
 **Location:**
-- Co-located tests beside source modules in `src/lib/**` (e.g. `src/lib/logic/stats.ts` + `src/lib/logic/stats.test.ts`).
+- Co-locate tests beside implementation under `src/lib/**` (for example `src/lib/logic/stats.ts` + `src/lib/logic/stats.test.ts`).
 - Shared test bootstrap in `src/test/setup.ts`.
 
 **Naming:**
-- Use `*.test.ts` suffix consistently (`src/lib/repos/classes.repo.test.ts`, `src/lib/db/withRetry.test.ts`).
+- Use `*.test.ts` consistently (`src/lib/repos/classes.repo.test.ts`, `src/lib/repos/lessons.repo.test.ts`, `src/lib/logic/sessionKindUi.test.ts`).
 
 **Structure:**
 ```
@@ -57,10 +57,10 @@ describe('lessons.repo', () => {
 ```
 
 **Patterns:**
-- Use `describe` by module boundary, `it` by business rule/scenario (`src/lib/repos/lessons.repo.test.ts`, `src/lib/logic/rosterImport.test.ts`).
-- Use explicit assertions in every test to satisfy `requireAssertions` (`vite.config.ts`).
-- Reset Dexie state in `beforeEach` for repository/integration tests (`src/lib/repos/*.test.ts`).
-- Validate both happy and failure paths for critical rules (e.g. rejection assertion for blocked session-kind change in `src/lib/repos/lessons.repo.test.ts`).
+- Use `describe` per module and `it` per behavior rule (`src/lib/repos/lessons.repo.test.ts`, `src/lib/logic/stats.test.ts`, `src/lib/logic/rosterImport.test.ts`).
+- Include explicit assertions in every test because `expect.requireAssertions` is enabled in `vite.config.ts`.
+- For repository tests, reset IndexedDB in `beforeEach` with `db.delete()` and `db.open()` as in `src/lib/repos/classes.repo.test.ts` and `src/lib/repos/lessons.repo.test.ts`.
+- Cover both success and failure paths for business rules, including thrown-domain-error assertions (`SESSION_KIND_EXTRA_BLOCKED_ABSENCES` in `src/lib/repos/lessons.repo.test.ts`).
 
 ## Mocking
 
@@ -76,12 +76,12 @@ expect(fn).toHaveBeenCalledTimes(2);
 ```
 
 **What to Mock:**
-- Mock callback-based transient behavior and retry loops (`src/lib/db/withRetry.test.ts`).
-- Stub in-memory browser DB APIs through `fake-indexeddb/auto` at setup level (`src/test/setup.ts`) rather than per-test local mocks.
+- Mock retry callback behavior and invocation counts (`src/lib/db/withRetry.test.ts`).
+- Use `fake-indexeddb/auto` globally in `src/test/setup.ts` instead of ad-hoc per-test DB mocks.
 
 **What NOT to Mock:**
-- Do not mock repository functions when validating data-integrity rules; use the actual Dexie-backed `db` (`src/lib/repos/classes.repo.test.ts`, `src/lib/repos/lessons.repo.test.ts`).
-- Do not mock pure logic modules (`src/lib/logic/stats.ts`, `src/lib/logic/rosterImport.ts`); test them directly with deterministic inputs.
+- Do not mock repo internals when validating Dexie transaction behavior (`src/lib/repos/classes.repo.test.ts`, `src/lib/repos/lessons.repo.test.ts`).
+- Do not mock pure logic modules (`src/lib/logic/stats.ts`, `src/lib/logic/sessionKindUi.ts`, `src/lib/logic/rosterImport.ts`); test deterministic inputs directly.
 
 ## Fixtures and Factories
 
@@ -93,7 +93,7 @@ await db.absences.add({ id: `${lesson.id}__${sid}`, lessonId: lesson.id, student
 ```
 
 **Location:**
-- Inline setup per test is the dominant pattern; no shared fixture/factory directory is currently used.
+- Inline arrangement inside each test is the standard pattern; no dedicated fixtures/factories directory is present.
 
 ## Coverage
 
@@ -107,20 +107,31 @@ bun run test:unit -- --coverage
 ## Test Types
 
 **Unit Tests:**
-- Pure computational and parsing logic are unit-tested in isolation (`src/lib/logic/stats.test.ts`, `src/lib/logic/rosterImport.test.ts`).
+- Pure computation and parser behavior are unit tested (`src/lib/logic/stats.test.ts`, `src/lib/logic/rosterImport.test.ts`, `src/lib/logic/sessionKindUi.test.ts`).
 
 **Integration Tests:**
-- Repository behavior is tested against real Dexie tables in node test runtime (`src/lib/repos/classes.repo.test.ts`, `src/lib/repos/lessons.repo.test.ts`).
+- Repository behavior runs against real Dexie tables in Node test runtime (`src/lib/repos/classes.repo.test.ts`, `src/lib/repos/lessons.repo.test.ts`).
 - DB smoke coverage verifies client wiring and read/write path (`src/lib/db/client.smoke.test.ts`).
 
 **E2E Tests:**
-- Not used (no Playwright/Cypress config detected, and no `src/routes/**/*.test.*` coverage for UI workflows).
+- Not used (no Playwright/Cypress config detected and no route-level UI tests under `src/routes/**`).
+
+## Skipped Behavior Coverage
+
+- `LessonSessionKind` includes `'skipped'` in `src/lib/db/types.ts`; tests must treat this as a first-class branch whenever session-kind logic changes.
+- Repository tests verify skipped invariants in `src/lib/repos/lessons.repo.test.ts`:
+  - `createLesson` with `sessionKind: 'skipped'` stores `durationHours = 0`.
+  - `updateLesson(..., { sessionKind: 'skipped' })` clears absences atomically.
+  - skipped sessions keep `durationHours = 0` even when a duration patch is supplied.
+- Logic tests verify skipped UI/label/editability behavior in `src/lib/logic/sessionKindUi.test.ts`.
+- Stats tests verify skipped sessions do not influence class/extra counts in `src/lib/logic/stats.test.ts`.
+- Import parser tests assert skipped-line accounting via the `skipped` field in `src/lib/logic/rosterImport.test.ts`.
 
 ## CI Usage
 
 - CI workflows are not detected (`.github/workflows/*.yml` missing), so tests currently run as local/pre-commit discipline.
 - Build and quality scripts exist in `package.json`, but no repository-level automation is enforcing them remotely.
-- Recommended current team convention: run `bun run test` and `bun run check` before merging.
+- Team convention: run `bun run test` and `bun run check` before merging changes.
 
 ## Common Patterns
 
@@ -135,14 +146,6 @@ await expect(updateLesson(lesson.id, { sessionKind: 'extra' })).rejects.toThrow(
 ```typescript
 await expect(withRetry(fn, { retries: 1 })).rejects.toThrow('x');
 ```
-
-## Current Gaps
-
-- UI route behavior is untested (`src/routes/+layout.svelte`, `src/routes/class/[classId]/+page.svelte`, `src/routes/class/[classId]/students/+page.svelte`, `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte`).
-- Attendance repository lacks direct test coverage (`src/lib/repos/attendance.repo.ts` has no paired `attendance.repo.test.ts`).
-- Students repository import/replace transaction rules are only indirectly exercised via UI usage; dedicated repo tests are missing for `replaceStudents` and `appendStudents` (`src/lib/repos/students.repo.ts`).
-- New business-rule surfaces in `src/lib/logic/stats.ts` have core coverage, but edge-case guardrails (negative/very large values, floating-point precision boundaries) are not explicitly asserted.
-- Load-function error paths are not tested (`src/routes/class/[classId]/+layout.ts`, `src/routes/class/[classId]/lesson/[lessonId]/+page.ts`).
 
 ---
 
