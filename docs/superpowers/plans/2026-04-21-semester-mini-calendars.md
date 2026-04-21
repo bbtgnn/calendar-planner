@@ -363,11 +363,9 @@ git commit -m "feat: persist semester bounds on ClassRow (Dexie v3)"
 
 - [ ] **Step 1: Write failing tests**
 
-Append to `src/lib/repos/classes.repo.test.ts`:
+In `src/lib/repos/classes.repo.test.ts`, extend the existing `classes.repo` import to include `updateClass`, then append:
 
 ```typescript
-import { updateClass } from './classes.repo';
-
 it('createClass defaults semester fields to null', async () => {
 	const c = await createClass({ name: 'S', totalHoursTarget: 1 });
 	expect(c.semesterStart).toBeNull();
