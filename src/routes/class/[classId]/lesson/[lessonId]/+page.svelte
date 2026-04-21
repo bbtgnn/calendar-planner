@@ -1,6 +1,14 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import type { PageData } from './$types';
 	import { updateLesson } from '$lib/repos/lessons.repo';
+	import {
+		attendanceVisibleForKind,
+		doneEditableForKind,
+		hoursEditableForKind,
+		labelForTitleField,
+		normalizedHoursForKind
+	} from '$lib/logic/sessionKindUi';
 	import { listStudents } from '$lib/repos/students.repo';
 	import { listAbsentStudentIds, setAbsent } from '$lib/repos/attendance.repo';
 	import { withRetry } from '$lib/db/withRetry';
@@ -35,7 +43,7 @@
 
 	async function refresh() {
 		students = await listStudents(data.lesson.classId);
-		if (sessionKind === 'extra') {
+		if (!attendanceVisibleForKind(sessionKind)) {
 			absent = new Set();
 			return;
 		}
@@ -49,13 +57,16 @@
 			showToast('Enter a valid non-negative number of hours.');
 			return;
 		}
+		if (!doneEditableForKind(sessionKind)) {
+			done = false;
+		}
 		try {
 			await withRetry(() =>
 				updateLesson(data.lesson.id, {
 					date,
-					durationHours: h,
+					durationHours: normalizedHoursForKind(sessionKind, h),
 					title,
-					done,
+					done: doneEditableForKind(sessionKind) ? done : false,
 					sessionKind
 				})
 			);
@@ -66,11 +77,25 @@
 
 	async function changeSessionKind(next: LessonSessionKind) {
 		const prev = sessionKind;
+		const prevDurationHours = durationHours;
+		const prevDone = done;
 		sessionKind = next;
+		durationHours = normalizedHoursForKind(next, Number(durationHours));
+		if (!doneEditableForKind(next)) {
+			done = false;
+		}
 		try {
-			await withRetry(() => updateLesson(data.lesson.id, { sessionKind: next }));
+			await withRetry(() =>
+				updateLesson(data.lesson.id, {
+					sessionKind: next,
+					durationHours: normalizedHoursForKind(next, Number(durationHours))
+				})
+			);
+			await refresh();
 		} catch (e) {
 			sessionKind = prev;
+			durationHours = prevDurationHours;
+			done = prevDone;
 			const msg = e instanceof Error ? e.message : String(e);
 			if (msg.includes('SESSION_KIND_EXTRA_BLOCKED_ABSENCES')) {
 				showToast('Clear all absences for this session before marking it as Extra.');
@@ -96,7 +121,7 @@
 
 <section class="card">
 	<p class="back">
-		<a href="/class/{data.lesson.classId}">← Back to schedule</a>
+		<a href={resolve('/class/[classId]', { classId: data.lesson.classId })}>← Back to schedule</a>
 	</p>
 	<h1>{title}</h1>
 
@@ -107,10 +132,19 @@
 		</label>
 		<label>
 			Hours
-			<input type="number" min="0" step="0.25" bind:value={durationHours} onblur={persistLessonMeta} />
+			<input
+				type="number"
+				min="0"
+				step="0.25"
+				bind:value={durationHours}
+				disabled={!hoursEditableForKind(sessionKind)}
+				onblur={persistLessonMeta}
+			/>
 		</label>
 		<label>
-			Title
+			{sessionKind === 'skipped'
+				? `${labelForTitleField(sessionKind)} for skipped`
+				: labelForTitleField(sessionKind)}
 			<input type="text" bind:value={title} onblur={persistLessonMeta} />
 		</label>
 		<label>
@@ -124,13 +158,19 @@
 			>
 				<option value="class">Class</option>
 				<option value="extra">Extra / 1:1</option>
+				<option value="skipped">Skipped</option>
 			</select>
 		</label>
 		<label class="check">
 			<input
 				type="checkbox"
 				bind:checked={done}
+				disabled={!doneEditableForKind(sessionKind)}
 				onchange={() => {
+					if (!doneEditableForKind(sessionKind)) {
+						done = false;
+						return;
+					}
 					void persistLessonMeta();
 				}}
 			/>
@@ -141,8 +181,12 @@
 
 <section class="card">
 	<h2>Attendance</h2>
-	{#if sessionKind === 'extra'}
-		<p class="muted">No class attendance for Extra / 1:1 sessions.</p>
+	{#if !attendanceVisibleForKind(sessionKind)}
+		<p class="muted">
+			{sessionKind === 'skipped'
+				? 'Skipped sessions do not have attendance.'
+				: 'No class attendance for Extra / 1:1 sessions.'}
+		</p>
 	{:else if students.length === 0}
 		<p class="muted">Add students on the Students tab to record absences.</p>
 	{:else}
