@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
 	import type { PageData } from './$types';
 	import { updateLesson } from '$lib/repos/lessons.repo';
 	import {
@@ -57,9 +56,6 @@
 			showToast('Enter a valid non-negative number of hours.');
 			return;
 		}
-		if (!doneEditableForKind(sessionKind)) {
-			done = false;
-		}
 		try {
 			await withRetry(() =>
 				updateLesson(data.lesson.id, {
@@ -79,16 +75,17 @@
 		const prev = sessionKind;
 		const prevDurationHours = durationHours;
 		const prevDone = done;
+		const nextHours = normalizedHoursForKind(next, Number(durationHours));
+		const nextDone = doneEditableForKind(next) ? done : false;
 		sessionKind = next;
-		durationHours = normalizedHoursForKind(next, Number(durationHours));
-		if (!doneEditableForKind(next)) {
-			done = false;
-		}
+		durationHours = nextHours;
+		done = nextDone;
 		try {
 			await withRetry(() =>
 				updateLesson(data.lesson.id, {
 					sessionKind: next,
-					durationHours: normalizedHoursForKind(next, Number(durationHours))
+					durationHours: nextHours,
+					done: nextDone
 				})
 			);
 			await refresh();
@@ -121,7 +118,7 @@
 
 <section class="card">
 	<p class="back">
-		<a href={resolve('/class/[classId]', { classId: data.lesson.classId })}>← Back to schedule</a>
+		<a href={`/class/${data.lesson.classId}`}>← Back to schedule</a>
 	</p>
 	<h1>{title}</h1>
 
@@ -142,9 +139,7 @@
 			/>
 		</label>
 		<label>
-			{sessionKind === 'skipped'
-				? `${labelForTitleField(sessionKind)} for skipped`
-				: labelForTitleField(sessionKind)}
+			{labelForTitleField(sessionKind)}
 			<input type="text" bind:value={title} onblur={persistLessonMeta} />
 		</label>
 		<label>
