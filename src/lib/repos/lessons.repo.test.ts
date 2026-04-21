@@ -56,4 +56,53 @@ describe('lessons.repo', () => {
 		const row = await db.lessons.get(lesson.id);
 		expect(row?.title).toBe('Updated');
 	});
+
+	it('createLesson stores 0 hours for skipped sessions', async () => {
+		const c = await createClass({ name: 'A', totalHoursTarget: 10 });
+		const lesson = await createLesson({
+			classId: c.id,
+			date: '2026-05-02',
+			durationHours: 2,
+			title: 'Holiday',
+			sessionKind: 'skipped'
+		});
+		expect(lesson.sessionKind).toBe('skipped');
+		expect(lesson.durationHours).toBe(0);
+		const row = await db.lessons.get(lesson.id);
+		expect(row?.durationHours).toBe(0);
+	});
+
+	it('updateLesson to skipped coerces hours to 0 and clears absences atomically', async () => {
+		const c = await createClass({ name: 'A', totalHoursTarget: 10 });
+		const lesson = await createLesson({
+			classId: c.id,
+			date: '2026-05-03',
+			durationHours: 1.5,
+			title: 'L1'
+		});
+		const sid = crypto.randomUUID();
+		await db.students.add({ id: sid, classId: c.id, name: 'S' });
+		await db.absences.add({ id: `${lesson.id}__${sid}`, lessonId: lesson.id, studentId: sid });
+
+		await updateLesson(lesson.id, { sessionKind: 'skipped' });
+		const row = await db.lessons.get(lesson.id);
+		expect(row?.sessionKind).toBe('skipped');
+		expect(row?.durationHours).toBe(0);
+		const absenceCount = await db.absences.where('lessonId').equals(lesson.id).count();
+		expect(absenceCount).toBe(0);
+	});
+
+	it('updateLesson keeps skipped duration at 0 even if duration patch is provided', async () => {
+		const c = await createClass({ name: 'A', totalHoursTarget: 10 });
+		const lesson = await createLesson({
+			classId: c.id,
+			date: '2026-05-04',
+			durationHours: 1,
+			title: 'Skip me',
+			sessionKind: 'skipped'
+		});
+		await updateLesson(lesson.id, { durationHours: 4 });
+		const row = await db.lessons.get(lesson.id);
+		expect(row?.durationHours).toBe(0);
+	});
 });

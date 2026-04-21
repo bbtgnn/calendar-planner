@@ -2,7 +2,7 @@ export type ClassId = string;
 export type StudentId = string;
 export type LessonId = string;
 
-export type LessonSessionKind = 'class' | 'extra';
+export type LessonSessionKind = 'class' | 'extra' | 'skipped';
 
 export type ClassRow = {
 	id: ClassId;

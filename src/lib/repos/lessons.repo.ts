@@ -18,14 +18,15 @@ export async function createLesson(input: {
 	title: string;
 	sessionKind?: LessonSessionKind;
 }): Promise<LessonRow> {
+	const sessionKind = input.sessionKind ?? 'class';
 	const row: LessonRow = {
 		id: crypto.randomUUID(),
 		classId: input.classId,
 		date: input.date,
-		durationHours: input.durationHours,
+		durationHours: sessionKind === 'skipped' ? 0 : input.durationHours,
 		title: input.title || 'Lesson',
 		done: false,
-		sessionKind: input.sessionKind ?? 'class'
+		sessionKind
 	};
 	await db.lessons.add(row);
 	return row;
@@ -35,20 +36,34 @@ export async function updateLesson(
 	id: LessonId,
 	patch: Partial<Pick<LessonRow, 'date' | 'durationHours' | 'title' | 'done' | 'sessionKind'>>
 ): Promise<void> {
-	if (patch.sessionKind === 'extra') {
-		await db.transaction('rw', db.lessons, db.absences, async () => {
-			const current = await db.lessons.get(id);
-			if (current?.sessionKind !== 'extra') {
-				const n = await db.absences.where('lessonId').equals(id).count();
-				if (n > 0) {
-					throw new Error('SESSION_KIND_EXTRA_BLOCKED_ABSENCES');
-				}
+	await db.transaction('rw', db.lessons, db.absences, async () => {
+		const current = await db.lessons.get(id);
+		if (!current) return;
+
+		if (patch.sessionKind === 'extra' && current.sessionKind !== 'extra') {
+			const n = await db.absences.where('lessonId').equals(id).count();
+			if (n > 0) {
+				throw new Error('SESSION_KIND_EXTRA_BLOCKED_ABSENCES');
 			}
-			await db.lessons.update(id, patch);
-		});
-		return;
-	}
-	await db.lessons.update(id, patch);
+		}
+
+		const nextKind = patch.sessionKind ?? current.sessionKind;
+		const nextPatch: Partial<
+			Pick<LessonRow, 'date' | 'durationHours' | 'title' | 'done' | 'sessionKind'>
+		> = {
+			...patch
+		};
+
+		if (nextKind === 'skipped') {
+			nextPatch.durationHours = 0;
+		}
+
+		if (patch.sessionKind === 'skipped' && current.sessionKind !== 'skipped') {
+			await db.absences.where('lessonId').equals(id).delete();
+		}
+
+		await db.lessons.update(id, nextPatch);
+	});
 }
 
 export async function deleteLessonCascade(id: LessonId): Promise<void> {
