@@ -6,6 +6,12 @@
 	import { withRetry } from '$lib/db/withRetry';
 	import { showToast } from '$lib/stores/toast';
 	import {
+		doneEditableForKind,
+		hoursEditableForKind,
+		labelForTitleField,
+		normalizedHoursForKind
+	} from '$lib/logic/sessionKindUi';
+	import {
 		sumScheduledTeacherHours,
 		remainingHours,
 		doneLessonCount,
@@ -114,7 +120,7 @@
 				createLesson({
 					classId: data.class.id,
 					date: newDate,
-					durationHours: h,
+					durationHours: normalizedHoursForKind(newSessionKind, h),
 					title: newTitle,
 					sessionKind: newSessionKind
 				})
@@ -126,6 +132,13 @@
 			await refresh();
 		} catch {
 			showToast('Could not add lesson.');
+		}
+	}
+
+	function handleNewSessionKindChange(event: Event) {
+		const nextKind = (event.currentTarget as HTMLSelectElement).value as LessonSessionKind;
+		if (nextKind === 'skipped') {
+			newHours = 0;
 		}
 	}
 
@@ -213,17 +226,24 @@
 		</label>
 		<label>
 			Hours (teacher)
-			<input type="number" min="0" step="0.25" bind:value={newHours} />
+			<input
+				type="number"
+				min="0"
+				step="0.25"
+				bind:value={newHours}
+				disabled={!hoursEditableForKind(newSessionKind)}
+			/>
 		</label>
 		<label>
-			Title
+			{labelForTitleField(newSessionKind)}
 			<input type="text" bind:value={newTitle} />
 		</label>
 		<label>
 			Kind
-			<select bind:value={newSessionKind}>
+			<select bind:value={newSessionKind} onchange={handleNewSessionKindChange}>
 				<option value="class">Class</option>
 				<option value="extra">Extra / 1:1</option>
+				<option value="skipped">Skipped</option>
 			</select>
 		</label>
 		<button type="button" class="btn primary" onclick={addLesson}>Add</button>
@@ -255,8 +275,13 @@
 									class="badge"
 									class:badge-class={lesson.sessionKind === 'class'}
 									class:badge-extra={lesson.sessionKind === 'extra'}
+									class:badge-skipped={lesson.sessionKind === 'skipped'}
 								>
-									{lesson.sessionKind === 'class' ? 'Class' : 'Extra'}
+									{lesson.sessionKind === 'class'
+										? 'Class'
+										: lesson.sessionKind === 'extra'
+											? 'Extra'
+											: 'Skipped'}
 								</span>
 							</td>
 							<td>{lesson.date}</td>
@@ -266,6 +291,7 @@
 								<input
 									type="checkbox"
 									checked={lesson.done}
+									disabled={!doneEditableForKind(lesson.sessionKind)}
 									onchange={(e) => toggleDone(lesson, (e.currentTarget as HTMLInputElement).checked)}
 								/>
 							</td>
@@ -348,6 +374,10 @@
 	.badge-extra {
 		background: #f3e8fd;
 		color: #6a1b9a;
+	}
+	.badge-skipped {
+		background: #f1f3f4;
+		color: #3c4043;
 	}
 	.btn {
 		padding: 0.4rem 0.75rem;
