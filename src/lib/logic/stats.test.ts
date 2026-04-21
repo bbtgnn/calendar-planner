@@ -71,4 +71,16 @@ describe('stats', () => {
 		expect(scheduledExtraSessionCount(lessons)).toBe(1);
 		expect(doneExtraSessionCount(lessons)).toBe(0);
 	});
+
+	it('skipped sessions do not affect class/extra lesson counts', () => {
+		const lessons: LessonForContractStats[] = [
+			{ done: true, durationHours: 1, sessionKind: 'class' },
+			{ done: false, durationHours: 1, sessionKind: 'extra' },
+			{ done: true, durationHours: 0, sessionKind: 'skipped' }
+		];
+		expect(scheduledLessonCount(lessons)).toBe(1);
+		expect(doneLessonCount(lessons)).toBe(1);
+		expect(scheduledExtraSessionCount(lessons)).toBe(1);
+		expect(doneExtraSessionCount(lessons)).toBe(0);
+	});
 });
