@@ -107,24 +107,24 @@
 					</div>
 					<div class="cells">
 						{#each monthGridMondayFirst(ym) as cell, ci (`${ym}-${ci}`)}
-							{#if 'pad' in cell}
-								<div class="cell pad"></div>
-							{:else}
-								{@const inS =
-									klass.semesterStart &&
-									klass.semesterEnd &&
-									isDateInSemester(cell.isoDate, klass.semesterStart, klass.semesterEnd)}
-								<div class="cell" class:muted={!inS}>
-									<span class="dnum">{Number(cell.isoDate.slice(8))}</span>
-									{#if inS}
-										<div class="dots">
-											{#each [...(kindsMap.get(cell.isoDate) ?? [])].sort() as k (k)}
-												<i class="dot {k}"></i>
-											{/each}
-										</div>
-									{/if}
-								</div>
-							{/if}
+							{@const inS =
+								klass.semesterStart &&
+								klass.semesterEnd &&
+								isDateInSemester(cell.isoDate, klass.semesterStart, klass.semesterEnd)}
+							<div
+								class="cell"
+								class:semester-out={!inS}
+								class:out-month={!cell.inMonth && inS}
+							>
+								<span class="dnum">{Number(cell.isoDate.slice(8))}</span>
+								{#if inS}
+									<div class="dots">
+										{#each [...(kindsMap.get(cell.isoDate) ?? [])].sort() as k (k)}
+											<i class="dot {k}"></i>
+										{/each}
+									</div>
+								{/if}
+							</div>
 						{/each}
 					</div>
 				</div>
@@ -231,13 +231,18 @@
 		flex-direction: column;
 		align-items: center;
 	}
-	.cell.pad {
-		background: transparent;
-		border-color: transparent;
-	}
-	.cell.muted {
+	.cell.semester-out {
 		opacity: 0.38;
 		background: #f4f4f4;
+	}
+	/** Leading/trailing week days from other months, still inside semester: muted cell, dots visible */
+	.cell.out-month {
+		opacity: 0.78;
+		background: #f0f2f5;
+		border-color: #e0e3e8;
+	}
+	.cell.out-month .dnum {
+		color: #5f6368;
 	}
 	.dnum {
 		font-weight: 600;

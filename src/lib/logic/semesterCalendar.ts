@@ -28,9 +28,9 @@ export function listYearMonthsInRange(startIso: string, endIso: string): string[
 	return out;
 }
 
-export type MonthCell = { isoDate: string } | { pad: true };
+export type MonthCell = { isoDate: string; inMonth: boolean };
 
-/** 6×7 grid, Monday-first week row; `pad` cells are outside the requested month. */
+/** 6×7 grid, Monday-first week row; `inMonth` is false for leading/trailing days from adjacent months. */
 export function monthGridMondayFirst(yearMonth: string): MonthCell[] {
 	const [Y, M] = yearMonth.split('-').map(Number);
 	const first = new Date(Date.UTC(Y, M - 1, 1));
@@ -44,13 +44,8 @@ export function monthGridMondayFirst(yearMonth: string): MonthCell[] {
 		const yy = d.getUTCFullYear();
 		const mm = d.getUTCMonth() + 1;
 		const dd = d.getUTCDate();
-		if (yy === Y && mm === M) {
-			cells.push({
-				isoDate: `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`
-			});
-		} else {
-			cells.push({ pad: true });
-		}
+		const isoDate = `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+		cells.push({ isoDate, inMonth: yy === Y && mm === M });
 	}
 	return cells;
 }

@@ -36,13 +36,16 @@ describe('semesterCalendar', () => {
 		]);
 	});
 
-	it('monthGridMondayFirst returns 42 cells with pads outside the month', () => {
+	it('monthGridMondayFirst returns 42 cells with inMonth for title month only', () => {
 		const cells = monthGridMondayFirst('2026-04');
 		expect(cells).toHaveLength(42);
-		const dated = cells.filter((c): c is { isoDate: string } => 'isoDate' in c);
-		expect(dated).toHaveLength(30);
-		expect(dated[0].isoDate).toBe('2026-04-01');
-		expect(dated[dated.length - 1].isoDate).toBe('2026-04-30');
+		const inMonth = cells.filter((c) => c.inMonth);
+		expect(inMonth).toHaveLength(30);
+		expect(inMonth[0].isoDate).toBe('2026-04-01');
+		expect(inMonth[inMonth.length - 1].isoDate).toBe('2026-04-30');
+		const leadPad = cells.filter((c) => !c.inMonth);
+		expect(leadPad).toHaveLength(12);
+		expect(leadPad[0].isoDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 	});
 
 	it('formatYearMonthHeading uses UTC month name', () => {
