@@ -22,6 +22,7 @@ A **browser-only** application for teachers to plan **multiple classes** across 
 
 - Identifier, **name**.
 - **`totalHoursTarget`**: semester hour budget (number).
+- **`semesterStart` / `semesterEnd`**: optional inclusive `YYYY-MM-DD` bounds for the per-class **semester map** UI (see `docs/superpowers/specs/2026-04-21-semester-mini-calendars-design.md`). When unset, the map is hidden; lessons may still exist outside the configured range.
 - Ordering or `createdAt` for stable lists optional (implementation detail).
 
 ### Student
