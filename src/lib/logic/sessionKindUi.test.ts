@@ -3,6 +3,7 @@ import {
 	attendanceVisibleForKind,
 	doneEditableForKind,
 	hoursEditableForKind,
+	labelForKind,
 	labelForTitleField,
 	normalizedHoursForKind
 } from './sessionKindUi';
@@ -16,6 +17,12 @@ describe('sessionKindUi', () => {
 	it('marks skipped title label as reason', () => {
 		expect(labelForTitleField('skipped')).toBe('Reason');
 		expect(labelForTitleField('class')).toBe('Title');
+	});
+
+	it('returns display labels for each session kind', () => {
+		expect(labelForKind('class')).toBe('Class');
+		expect(labelForKind('extra')).toBe('Extra');
+		expect(labelForKind('skipped')).toBe('Skipped');
 	});
 
 	it('disables hours and done for skipped', () => {

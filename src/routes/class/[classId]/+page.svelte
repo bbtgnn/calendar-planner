@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { resolve } from '$app/paths';
 	import type { PageData } from './$types';
 	import { listLessons, createLesson, updateLesson, deleteLessonCascade } from '$lib/repos/lessons.repo';
 	import { updateClass } from '$lib/repos/classes.repo';
@@ -8,6 +9,7 @@
 	import {
 		doneEditableForKind,
 		hoursEditableForKind,
+		labelForKind,
 		labelForTitleField,
 		normalizedHoursForKind
 	} from '$lib/logic/sessionKindUi';
@@ -36,13 +38,13 @@
 	let newTitle = $state('Lesson');
 	let newSessionKind = $state<LessonSessionKind>('class');
 
-	let targetHours = $state(0);
-	let targetStudentLessonHours = $state(0);
+	// svelte-ignore state_referenced_locally
+	const initialTargetHours = data.class.totalHoursTarget;
+	// svelte-ignore state_referenced_locally
+	const initialTargetStudentLessonHours = data.class.requiredStudentLessonHours;
 
-	$effect(() => {
-		targetHours = data.class.totalHoursTarget;
-		targetStudentLessonHours = data.class.requiredStudentLessonHours;
-	});
+	let targetHours = $state(initialTargetHours);
+	let targetStudentLessonHours = $state(initialTargetStudentLessonHours);
 
 	const scheduled = $derived(sumScheduledTeacherHours(lessons));
 	const tClass = $derived(sumTeacherHoursForKind(lessons, 'class'));
@@ -63,11 +65,11 @@
 	const remaining = $derived(remainingHours(targetHours, scheduled));
 
 	const dupDates = $derived.by(() => {
-		const counts = new Map<string, number>();
+		const counts: Record<string, number> = {};
 		for (const l of lessons) {
-			counts.set(l.date, (counts.get(l.date) ?? 0) + 1);
+			counts[l.date] = (counts[l.date] ?? 0) + 1;
 		}
-		return [...counts.values()].some((n) => n > 1);
+		return Object.values(counts).some((n) => n > 1);
 	});
 	const pctDone = $derived.by(() => {
 		const s = scheduledLessonCount(lessons);
@@ -110,7 +112,7 @@
 			showToast('Pick a date for the new lesson.');
 			return;
 		}
-		const h = Number(newHours);
+		const h = normalizedHoursForKind(newSessionKind, Number(newHours));
 		if (!Number.isFinite(h) || h < 0) {
 			showToast('Enter a valid non-negative number of hours.');
 			return;
@@ -120,7 +122,7 @@
 				createLesson({
 					classId: data.class.id,
 					date: newDate,
-					durationHours: normalizedHoursForKind(newSessionKind, h),
+					durationHours: h,
 					title: newTitle,
 					sessionKind: newSessionKind
 				})
@@ -136,9 +138,16 @@
 	}
 
 	function handleNewSessionKindChange(event: Event) {
+		const prevKind = newSessionKind;
 		const nextKind = (event.currentTarget as HTMLSelectElement).value as LessonSessionKind;
+		newSessionKind = nextKind;
 		if (nextKind === 'skipped') {
 			newHours = 0;
+			if (newTitle === 'Lesson') {
+				newTitle = '';
+			}
+		} else if (prevKind === 'skipped' && newHours === 0) {
+			newHours = 2;
 		}
 	}
 
@@ -232,6 +241,9 @@
 				step="0.25"
 				bind:value={newHours}
 				disabled={!hoursEditableForKind(newSessionKind)}
+				title={hoursEditableForKind(newSessionKind)
+					? undefined
+					: 'Skipped sessions always use 0 teacher hours.'}
 			/>
 		</label>
 		<label>
@@ -240,7 +252,7 @@
 		</label>
 		<label>
 			Kind
-			<select bind:value={newSessionKind} onchange={handleNewSessionKindChange}>
+			<select value={newSessionKind} onchange={handleNewSessionKindChange}>
 				<option value="class">Class</option>
 				<option value="extra">Extra / 1:1</option>
 				<option value="skipped">Skipped</option>
@@ -277,11 +289,7 @@
 									class:badge-extra={lesson.sessionKind === 'extra'}
 									class:badge-skipped={lesson.sessionKind === 'skipped'}
 								>
-									{lesson.sessionKind === 'class'
-										? 'Class'
-										: lesson.sessionKind === 'extra'
-											? 'Extra'
-											: 'Skipped'}
+									{labelForKind(lesson.sessionKind)}
 								</span>
 							</td>
 							<td>{lesson.date}</td>
@@ -292,11 +300,22 @@
 									type="checkbox"
 									checked={lesson.done}
 									disabled={!doneEditableForKind(lesson.sessionKind)}
+									title={doneEditableForKind(lesson.sessionKind)
+										? undefined
+										: 'Skipped sessions cannot be marked done.'}
 									onchange={(e) => toggleDone(lesson, (e.currentTarget as HTMLInputElement).checked)}
 								/>
 							</td>
 							<td class="actions">
-								<a class="link" href="/class/{data.class.id}/lesson/{lesson.id}">Open</a>
+								<a
+									class="link"
+									href={resolve('/class/[classId]/lesson/[lessonId]', {
+										classId: data.class.id,
+										lessonId: lesson.id
+									})}
+								>
+									Open
+								</a>
 								<button type="button" class="link danger" onclick={() => removeLesson(lesson.id)}>
 									Delete
 								</button>

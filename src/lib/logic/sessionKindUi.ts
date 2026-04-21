@@ -8,6 +8,10 @@ export function labelForTitleField(kind: LessonSessionKind): 'Title' | 'Reason' 
 	return kind === 'skipped' ? 'Reason' : 'Title';
 }
 
+export function labelForKind(kind: LessonSessionKind): 'Class' | 'Extra' | 'Skipped' {
+	return kind === 'class' ? 'Class' : kind === 'extra' ? 'Extra' : 'Skipped';
+}
+
 export function hoursEditableForKind(kind: LessonSessionKind): boolean {
 	return kind !== 'skipped';
 }
