@@ -1,4 +1,5 @@
 import { db } from '$lib/db/client';
+import { assertValidSemesterBounds, mergeSemesterFields } from '$lib/logic/semesterCalendar';
 import type { ClassId, ClassRow } from '$lib/db/types';
 
 export async function listClasses(): Promise<ClassRow[]> {
@@ -29,8 +30,23 @@ export async function createClass(input: {
 
 export async function updateClass(
 	id: ClassId,
-	patch: Partial<Pick<ClassRow, 'name' | 'totalHoursTarget' | 'requiredStudentLessonHours'>>
+	patch: Partial<
+		Pick<ClassRow, 'name' | 'totalHoursTarget' | 'requiredStudentLessonHours' | 'semesterStart' | 'semesterEnd'>
+	>
 ): Promise<void> {
+	const existing = await getClass(id);
+	if (!existing) throw new Error('Class not found.');
+	const mergedSemester = mergeSemesterFields(
+		{
+			semesterStart: existing.semesterStart ?? null,
+			semesterEnd: existing.semesterEnd ?? null
+		},
+		{
+			semesterStart: patch.semesterStart,
+			semesterEnd: patch.semesterEnd
+		}
+	);
+	assertValidSemesterBounds(mergedSemester.semesterStart, mergedSemester.semesterEnd);
 	await db.classes.update(id, patch);
 }
 
