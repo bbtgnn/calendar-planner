@@ -27,9 +27,18 @@
 		doneExtraSessionCount,
 		scheduledExtraSessionCount
 	} from '$lib/logic/stats';
-	import type { LessonRow, LessonSessionKind } from '$lib/db/types';
+	import type { ClassRow, LessonRow, LessonSessionKind } from '$lib/db/types';
+	import SemesterMap from './SemesterMap.svelte';
 
 	let { data }: { data: PageData } = $props();
+
+	// svelte-ignore state_referenced_locally
+	const initialClass = data.class;
+	let classSnapshot = $state<ClassRow>(initialClass);
+
+	$effect(() => {
+		classSnapshot = data.class;
+	});
 
 	let lessons = $state<LessonRow[]>([]);
 
@@ -226,6 +235,14 @@
 	{/if}
 </section>
 
+<SemesterMap
+	classRow={classSnapshot}
+	{lessons}
+	onSemesterSaved={(c) => {
+		classSnapshot = c;
+	}}
+/>
+
 <section class="card">
 	<h2>Add session</h2>
 	<div class="grid add">
@@ -395,8 +412,8 @@
 		color: #6a1b9a;
 	}
 	.badge-skipped {
-		background: #f1f3f4;
-		color: #3c4043;
+		background: #fce8e6;
+		color: #c5221f;
 	}
 	.btn {
 		padding: 0.4rem 0.75rem;
