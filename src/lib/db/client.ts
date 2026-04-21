@@ -40,6 +40,22 @@ export class LessonPlannerDB extends Dexie {
 						}
 					});
 			});
+		this.version(3)
+			.stores({
+				classes: 'id, name, createdAt',
+				students: 'id, classId, name',
+				lessons: 'id, classId, date, done, sessionKind',
+				absences: 'id, lessonId, studentId'
+			})
+			.upgrade(async (trans) => {
+				await trans
+					.table('classes')
+					.toCollection()
+					.modify((c: ClassRow) => {
+						if (c.semesterStart === undefined) c.semesterStart = null;
+						if (c.semesterEnd === undefined) c.semesterEnd = null;
+					});
+			});
 	}
 }
 

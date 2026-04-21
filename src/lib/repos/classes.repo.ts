@@ -19,7 +19,9 @@ export async function createClass(input: {
 		name: input.name,
 		totalHoursTarget: input.totalHoursTarget,
 		requiredStudentLessonHours: input.requiredStudentLessonHours ?? 0,
-		createdAt: Date.now()
+		createdAt: Date.now(),
+		semesterStart: null,
+		semesterEnd: null
 	};
 	await db.classes.add(row);
 	return row;

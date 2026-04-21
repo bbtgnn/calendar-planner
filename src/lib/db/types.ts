@@ -11,6 +11,8 @@ export type ClassRow = {
 	/** Student lesson hours required (50-minute units). */
 	requiredStudentLessonHours: number;
 	createdAt: number;
+	semesterStart: string | null;
+	semesterEnd: string | null;
 };
 
 export type StudentRow = {

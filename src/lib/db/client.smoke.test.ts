@@ -9,7 +9,9 @@ describe('db', () => {
 			name: 'Test',
 			totalHoursTarget: 10,
 			requiredStudentLessonHours: 0,
-			createdAt: Date.now()
+			createdAt: Date.now(),
+			semesterStart: null,
+			semesterEnd: null
 		});
 		const row = await db.classes.get(id);
 		expect(row?.name).toBe('Test');
