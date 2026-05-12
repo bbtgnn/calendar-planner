@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { invalidate } from '$app/navigation';
 	import type { PageData } from './$types';
+	import { classLoadKey } from '$lib/kit/loadKeys';
 	import {
-		listStudents,
 		addStudent,
 		updateStudent,
 		deleteStudentCascade,
@@ -16,7 +16,6 @@
 
 	let { data }: { data: PageData } = $props();
 
-	let students = $state<StudentRow[]>([]);
 	let newName = $state('');
 	let editingId = $state<string | null>(null);
 	let editValue = $state('');
@@ -24,18 +23,16 @@
 	let previewSkipped = $state(0);
 	let fileKind = $state<'csv' | 'txt' | null>(null);
 
-	async function refresh() {
-		students = await listStudents(data.class.id);
+	async function revalidateClass() {
+		await invalidate(classLoadKey(data.class.id));
 	}
-
-	onMount(refresh);
 
 	async function add() {
 		if (!newName.trim()) return;
 		try {
 			await withRetry(() => addStudent(data.class.id, newName.trim()));
 			newName = '';
-			await refresh();
+			await revalidateClass();
 		} catch {
 			showToast('Could not add student.');
 		}
@@ -57,7 +54,7 @@
 		try {
 			await withRetry(() => updateStudent(id, name));
 			editingId = null;
-			await refresh();
+			await revalidateClass();
 		} catch {
 			showToast('Could not save student.');
 		}
@@ -67,7 +64,7 @@
 		if (!window.confirm('Remove this student and their absence records?')) return;
 		try {
 			await withRetry(() => deleteStudentCascade(id));
-			await refresh();
+			await revalidateClass();
 		} catch {
 			showToast('Could not remove student.');
 		}
@@ -100,7 +97,7 @@
 			showToast(`Imported ${previewNames.length}, skipped ${previewSkipped}.`);
 			previewNames = [];
 			fileKind = null;
-			await refresh();
+			await revalidateClass();
 		} catch {
 			showToast('Could not import students.');
 		}
@@ -120,7 +117,7 @@
 			showToast(`Replaced with ${previewNames.length}, skipped ${previewSkipped}.`);
 			previewNames = [];
 			fileKind = null;
-			await refresh();
+			await revalidateClass();
 		} catch {
 			showToast('Could not replace roster.');
 		}
@@ -129,11 +126,11 @@
 
 <section class="card">
 	<h1>Students — {data.class.name}</h1>
-	{#if students.length === 0}
+	{#if data.students.length === 0}
 		<p class="muted">No students yet. Add names below or import a .txt / .csv file (first column = name; optional header <code>name</code>).</p>
 	{:else}
 		<ul class="list">
-			{#each students as s (s.id)}
+			{#each data.students as s (s.id)}
 				<li>
 					{#if editingId === s.id}
 						<input class="grow" type="text" bind:value={editValue} />

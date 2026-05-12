@@ -1,37 +1,21 @@
 <script lang="ts">
 	import favicon from '$lib/assets/favicon.svg';
-	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
+	import { goto, invalidate } from '$app/navigation';
 	import { page } from '$app/state';
-	import { onMount } from 'svelte';
+	import { CLASSES_LIST_LOAD_KEY } from '$lib/kit/loadKeys';
 	import { toastMessage } from '$lib/stores/toast';
-	import { listClasses, createClass, deleteClassCascade, updateClass } from '$lib/repos/classes.repo';
-	import type { ClassRow } from '$lib/db/types';
+	import { createClass, deleteClassCascade, updateClass } from '$lib/repos/classes.repo';
 	import { withRetry } from '$lib/db/withRetry';
 	import { showToast } from '$lib/stores/toast';
 	import { clearLastClassId } from '$lib/preferences/activeClass';
 
-	let { children } = $props();
+	let { data, children } = $props();
 
-	let classes = $state<ClassRow[]>([]);
-	let loading = $state(true);
+	const classes = $derived(data.classes);
 
 	const routeClassId = $derived(
 		typeof page.params.classId === 'string' ? page.params.classId : ''
 	);
-
-	onMount(async () => {
-		if (!browser) return;
-		try {
-			classes = await listClasses();
-		} finally {
-			loading = false;
-		}
-	});
-
-	async function refreshClasses() {
-		classes = await listClasses();
-	}
 
 	async function onNewClass() {
 		const name = window.prompt('Class name?');
@@ -40,7 +24,7 @@
 			const c = await withRetry(() =>
 				createClass({ name: name.trim(), totalHoursTarget: 40 })
 			);
-			await refreshClasses();
+			await invalidate(CLASSES_LIST_LOAD_KEY);
 			await goto(`/class/${c.id}`);
 		} catch {
 			showToast('Could not create class.');
@@ -55,7 +39,7 @@
 		if (!trimmed || trimmed === current.trim()) return;
 		try {
 			await withRetry(() => updateClass(routeClassId, { name: trimmed }));
-			await refreshClasses();
+			await invalidate(CLASSES_LIST_LOAD_KEY);
 		} catch {
 			showToast('Could not rename class.');
 		}
@@ -67,7 +51,7 @@
 		try {
 			await withRetry(() => deleteClassCascade(routeClassId));
 			clearLastClassId();
-			await refreshClasses();
+			await invalidate(CLASSES_LIST_LOAD_KEY);
 			await goto('/');
 		} catch {
 			showToast('Could not delete class.');
@@ -87,7 +71,7 @@
 <div class="app">
 	<header class="bar">
 		<strong class="brand">Lesson planner</strong>
-		{#if !loading && classes.length > 0}
+		{#if classes.length > 0}
 			<label class="sr" for="class-switcher">Class</label>
 			<select id="class-switcher" class="select" value={routeClassId} onchange={onClassChange}>
 				{#each classes as c (c.id)}
@@ -99,7 +83,7 @@
 				<button type="button" class="btn" onclick={onRenameClass}>Rename</button>
 				<button type="button" class="btn danger" onclick={onDeleteClass}>Delete class</button>
 			{/if}
-		{:else if !loading}
+		{:else}
 			<button type="button" class="btn" onclick={onNewClass}>Create class</button>
 		{/if}
 	</header>

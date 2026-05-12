@@ -1,27 +1,10 @@
 <script lang="ts">
-	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
-	import { onMount } from 'svelte';
-	import { listClasses } from '$lib/repos/classes.repo';
-	import { getLastClassId } from '$lib/preferences/activeClass';
+	import type { PageData } from './$types';
 
-	let empty = $state<boolean | null>(null);
-
-	onMount(async () => {
-		if (!browser) return;
-		const classes = await listClasses();
-		if (classes.length === 0) {
-			empty = true;
-			return;
-		}
-		empty = false;
-		const last = getLastClassId();
-		const id = last && classes.some((c) => c.id === last) ? last : classes[0].id;
-		goto(`/class/${id}`);
-	});
+	let { data }: { data: PageData } = $props();
 </script>
 
-{#if empty === true}
+{#if 'empty' in data && data.empty}
 	<section class="card">
 		<h1>No classes yet</h1>
 		<p>Use <strong>Create class</strong> in the header to add your first class.</p>

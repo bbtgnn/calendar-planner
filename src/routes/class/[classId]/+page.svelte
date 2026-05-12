@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { invalidate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import type { PageData } from './$types';
-	import { listLessons, createLesson, updateLesson, deleteLessonCascade } from '$lib/repos/lessons.repo';
+	import { classLoadKey } from '$lib/kit/loadKeys';
+	import { createLesson, updateLesson, deleteLessonCascade } from '$lib/repos/lessons.repo';
 	import { updateClass } from '$lib/repos/classes.repo';
 	import { withRetry } from '$lib/db/withRetry';
 	import { showToast } from '$lib/stores/toast';
@@ -40,8 +41,6 @@
 		classSnapshot = data.class;
 	});
 
-	let lessons = $state<LessonRow[]>([]);
-
 	let newDate = $state('');
 	let newHours = $state(2);
 	let newTitle = $state('Lesson');
@@ -55,9 +54,18 @@
 	let targetHours = $state(initialTargetHours);
 	let targetStudentLessonHours = $state(initialTargetStudentLessonHours);
 
-	const scheduled = $derived(sumScheduledTeacherHours(lessons));
-	const tClass = $derived(sumTeacherHoursForKind(lessons, 'class'));
-	const tExtra = $derived(sumTeacherHoursForKind(lessons, 'extra'));
+	let lastTargetsClassId = $state<string | null>(null);
+	$effect(() => {
+		const id = data.class.id;
+		if (lastTargetsClassId === id) return;
+		lastTargetsClassId = id;
+		targetHours = data.class.totalHoursTarget;
+		targetStudentLessonHours = data.class.requiredStudentLessonHours;
+	});
+
+	const scheduled = $derived(sumScheduledTeacherHours(data.lessons));
+	const tClass = $derived(sumTeacherHoursForKind(data.lessons, 'class'));
+	const tExtra = $derived(sumTeacherHoursForKind(data.lessons, 'extra'));
 
 	const unplannedClassTh = $derived(unplannedClassTeacherHours(targetStudentLessonHours, tClass));
 	const maxExtraTh = $derived(maxExtraTeacherHours(targetHours, targetStudentLessonHours));
@@ -75,22 +83,20 @@
 
 	const dupDates = $derived.by(() => {
 		const counts: Record<string, number> = {};
-		for (const l of lessons) {
+		for (const l of data.lessons) {
 			counts[l.date] = (counts[l.date] ?? 0) + 1;
 		}
 		return Object.values(counts).some((n) => n > 1);
 	});
 	const pctDone = $derived.by(() => {
-		const s = scheduledLessonCount(lessons);
+		const s = scheduledLessonCount(data.lessons);
 		if (s === 0) return 0;
-		return Math.round((doneLessonCount(lessons) / s) * 100);
+		return Math.round((doneLessonCount(data.lessons) / s) * 100);
 	});
 
-	async function refresh() {
-		lessons = await listLessons(data.class.id);
+	async function revalidateClass() {
+		await invalidate(classLoadKey(data.class.id));
 	}
-
-	onMount(refresh);
 
 	async function saveTargets() {
 		const t = Number(targetHours);
@@ -111,6 +117,7 @@
 				})
 			);
 			showToast('Saved targets.');
+			await revalidateClass();
 		} catch {
 			showToast('Could not save targets.');
 		}
@@ -140,7 +147,7 @@
 			newHours = 2;
 			newTitle = 'Lesson';
 			newSessionKind = 'class';
-			await refresh();
+			await revalidateClass();
 		} catch {
 			showToast('Could not add lesson.');
 		}
@@ -163,7 +170,7 @@
 	async function toggleDone(lesson: LessonRow, done: boolean) {
 		try {
 			await withRetry(() => updateLesson(lesson.id, { done }));
-			await refresh();
+			await revalidateClass();
 		} catch {
 			showToast('Could not update lesson.');
 		}
@@ -173,7 +180,7 @@
 		if (!window.confirm('Delete this lesson and its attendance?')) return;
 		try {
 			await withRetry(() => deleteLessonCascade(id));
-			await refresh();
+			await revalidateClass();
 		} catch {
 			showToast('Could not delete lesson.');
 		}
@@ -222,11 +229,11 @@
 		</p>
 		<p>
 			<strong>Class lessons done:</strong>
-			{doneLessonCount(lessons)} / {scheduledLessonCount(lessons)} ({pctDone}%)
+			{doneLessonCount(data.lessons)} / {scheduledLessonCount(data.lessons)} ({pctDone}%)
 		</p>
 		<p>
 			<strong>Extra sessions done:</strong>
-			{doneExtraSessionCount(lessons)} / {scheduledExtraSessionCount(lessons)}
+			{doneExtraSessionCount(data.lessons)} / {scheduledExtraSessionCount(data.lessons)}
 		</p>
 	</div>
 
@@ -237,9 +244,10 @@
 
 <SemesterMap
 	classRow={classSnapshot}
-	{lessons}
-	onSemesterSaved={(c) => {
+	lessons={data.lessons}
+	onSemesterSaved={async (c) => {
 		classSnapshot = c;
+		await revalidateClass();
 	}}
 />
 
@@ -281,7 +289,7 @@
 
 <section class="card">
 	<h2>Sessions</h2>
-	{#if lessons.length === 0}
+	{#if data.lessons.length === 0}
 		<p class="muted">No sessions yet. Add one above.</p>
 	{:else}
 		<div class="table-wrap">
@@ -297,7 +305,7 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each lessons as lesson (lesson.id)}
+					{#each data.lessons as lesson (lesson.id)}
 						<tr>
 							<td>
 								<span

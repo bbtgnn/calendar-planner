@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { invalidate } from '$app/navigation';
 	import type { PageData } from './$types';
+	import { lessonLoadKey } from '$lib/kit/loadKeys';
 	import { updateLesson } from '$lib/repos/lessons.repo';
 	import {
 		attendanceVisibleForKind,
@@ -8,11 +10,10 @@
 		labelForTitleField,
 		normalizedHoursForKind
 	} from '$lib/logic/sessionKindUi';
-	import { listStudents } from '$lib/repos/students.repo';
-	import { listAbsentStudentIds, setAbsent } from '$lib/repos/attendance.repo';
+	import { setAbsent } from '$lib/repos/attendance.repo';
 	import { withRetry } from '$lib/db/withRetry';
 	import { showToast } from '$lib/stores/toast';
-	import type { LessonSessionKind, StudentRow } from '$lib/db/types';
+	import type { LessonSessionKind } from '$lib/db/types';
 
 	let { data }: { data: PageData } = $props();
 
@@ -22,32 +23,31 @@
 	let done = $state(false);
 	let sessionKind = $state<LessonSessionKind>('class');
 
-	/** Reseed form only when navigating to a different lesson (avoids clobbering in-progress edits). */
-	let loadedLessonId = $state('');
+	const formSeed = $derived(
+		`${data.lesson.id}|${data.lesson.date}|${data.lesson.durationHours}|${data.lesson.title}|${data.lesson.done}|${data.lesson.sessionKind}`
+	);
 
-	let students = $state<StudentRow[]>([]);
 	let absent = $state<Set<string>>(new Set());
 
 	$effect(() => {
-		const id = data.lesson.id;
-		if (id === loadedLessonId) return;
-		loadedLessonId = id;
-		date = data.lesson.date;
-		durationHours = data.lesson.durationHours;
-		title = data.lesson.title;
-		done = data.lesson.done;
-		sessionKind = data.lesson.sessionKind;
-		void refresh();
+		const _ = formSeed;
+		const l = data.lesson;
+		date = l.date;
+		durationHours = l.durationHours;
+		title = l.title;
+		done = l.done;
+		sessionKind = l.sessionKind;
 	});
 
-	async function refresh() {
-		students = await listStudents(data.lesson.classId);
-		if (!attendanceVisibleForKind(sessionKind)) {
-			absent = new Set();
-			return;
-		}
-		const ids = await listAbsentStudentIds(data.lesson.id);
-		absent = new Set(ids);
+	const absentSeed = $derived(data.absentIds.join('\0'));
+
+	$effect(() => {
+		const _ = absentSeed;
+		absent = new Set(data.absentIds);
+	});
+
+	async function revalidateLesson() {
+		await invalidate(lessonLoadKey(data.lesson.id));
 	}
 
 	async function persistLessonMeta() {
@@ -88,7 +88,7 @@
 					done: nextDone
 				})
 			);
-			await refresh();
+			await revalidateLesson();
 		} catch (e) {
 			sessionKind = prev;
 			durationHours = prevDurationHours;
@@ -111,7 +111,7 @@
 			await withRetry(() => setAbsent(data.lesson.id, studentId, isAbsent));
 		} catch {
 			showToast('Could not save attendance.');
-			await refresh();
+			await revalidateLesson();
 		}
 	}
 </script>
@@ -182,12 +182,12 @@
 				? 'Skipped sessions do not have attendance.'
 				: 'No class attendance for Extra / 1:1 sessions.'}
 		</p>
-	{:else if students.length === 0}
+	{:else if data.students.length === 0}
 		<p class="muted">Add students on the Students tab to record absences.</p>
 	{:else}
 		<p class="hint">Everyone is present unless marked absent.</p>
 		<ul class="list">
-			{#each students as s (s.id)}
+			{#each data.students as s (s.id)}
 				<li>
 					<span>{s.name}</span>
 					<label>
