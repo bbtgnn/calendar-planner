@@ -1,9 +1,13 @@
+import {
+	SessionKindErrorCode,
+	SESSION_KIND_ERROR_MESSAGES
+} from '$lib/logic/sessionKindErrors';
+
 /**
  * Stable error codes/messages thrown from repos and domain validation.
  * Keys match `Error.message` for lookup in {@link repoErrorMessage}.
  */
 export const RepoErrorCode = {
-	SESSION_KIND_EXTRA_BLOCKED_ABSENCES: 'SESSION_KIND_EXTRA_BLOCKED_ABSENCES',
 	CLASS_NOT_FOUND: 'CLASS_NOT_FOUND'
 } as const;
 
@@ -11,8 +15,7 @@ export type RepoErrorCode = (typeof RepoErrorCode)[keyof typeof RepoErrorCode];
 
 /** User-facing copy keyed by error message (code or literal validation text). */
 export const REPO_ERROR_MESSAGES: Record<string, string> = {
-	[RepoErrorCode.SESSION_KIND_EXTRA_BLOCKED_ABSENCES]:
-		'Clear all absences for this session before marking it as Extra.',
+	...SESSION_KIND_ERROR_MESSAGES,
 	[RepoErrorCode.CLASS_NOT_FOUND]: 'Class not found.',
 	'Semester start and end must both be set, or both cleared.':
 		'Set both semester start and end, or clear both.',

@@ -7,13 +7,10 @@
 	import { updateClass } from '$lib/repos/classes.repo';
 	import { showToast } from '$lib/stores/toast';
 	import {
-		doneEditableForKind,
-		hoursEditableForKind,
-		labelForKind,
-		labelForTitleField,
-		newSessionFormAfterKindChange,
-		normalizedHoursForKind
-	} from '$lib/logic/sessionKindPolicy';
+		applyKindToForm,
+		lessonFormUi,
+		syncAddFormToKind
+	} from '$lib/logic/sessionKind';
 	import {
 		sumScheduledTeacherHours,
 		remainingHours,
@@ -45,6 +42,13 @@
 	let newHours = $state(2);
 	let newTitle = $state('Lesson');
 	let newSessionKind = $state<LessonSessionKind>('class');
+
+	const newKindUi = $derived(lessonFormUi(newSessionKind));
+
+	$effect(() => {
+		const synced = syncAddFormToKind(newSessionKind, { hours: newHours, title: newTitle });
+		if (synced.hours !== newHours) newHours = synced.hours;
+	});
 
 	// svelte-ignore state_referenced_locally
 	const initialTargetHours = data.class.totalHoursTarget;
@@ -125,7 +129,7 @@
 			showToast('Pick a date for the new lesson.');
 			return;
 		}
-		const h = normalizedHoursForKind(newSessionKind, Number(newHours));
+		const h = Number(newHours);
 		if (!Number.isFinite(h) || h < 0) {
 			showToast('Enter a valid non-negative number of hours.');
 			return;
@@ -154,10 +158,7 @@
 		const prevKind = newSessionKind;
 		const nextKind = (event.currentTarget as HTMLSelectElement).value as LessonSessionKind;
 		newSessionKind = nextKind;
-		const next = newSessionFormAfterKindChange(prevKind, nextKind, {
-			hours: newHours,
-			title: newTitle
-		});
+		const next = applyKindToForm(prevKind, nextKind, { hours: newHours, title: newTitle });
 		newHours = next.hours;
 		newTitle = next.title;
 	}
@@ -258,14 +259,12 @@
 				min="0"
 				step="0.25"
 				bind:value={newHours}
-				disabled={!hoursEditableForKind(newSessionKind)}
-				title={hoursEditableForKind(newSessionKind)
-					? undefined
-					: 'Skipped sessions always use 0 teacher hours.'}
+				disabled={!newKindUi.hoursEditable}
+				title={newKindUi.hoursDisabledTitle}
 			/>
 		</label>
 		<label>
-			{labelForTitleField(newSessionKind)}
+			{newKindUi.titleLabel}
 			<input type="text" bind:value={newTitle} />
 		</label>
 		<label>
@@ -307,7 +306,7 @@
 									class:badge-extra={lesson.sessionKind === 'extra'}
 									class:badge-skipped={lesson.sessionKind === 'skipped'}
 								>
-									{labelForKind(lesson.sessionKind)}
+									{lessonFormUi(lesson.sessionKind).kindLabel}
 								</span>
 							</td>
 							<td>{lesson.date}</td>
@@ -317,10 +316,8 @@
 								<input
 									type="checkbox"
 									checked={lesson.done}
-									disabled={!doneEditableForKind(lesson.sessionKind)}
-									title={doneEditableForKind(lesson.sessionKind)
-										? undefined
-										: 'Skipped sessions cannot be marked done.'}
+									disabled={!lessonFormUi(lesson.sessionKind).doneEditable}
+									title={lessonFormUi(lesson.sessionKind).doneDisabledTitle}
 									onchange={(e) => toggleDone(lesson, (e.currentTarget as HTMLInputElement).checked)}
 								/>
 							</td>

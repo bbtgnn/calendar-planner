@@ -4,13 +4,10 @@
 	import { invalidateLoadKeys, runMutation } from '$lib/kit/runMutation';
 	import { updateLesson } from '$lib/repos/lessons.repo';
 	import {
-		attendanceVisibleForKind,
-		doneEditableForKind,
-		hoursEditableForKind,
-		labelForTitleField,
-		lessonFieldsForSessionKindChange,
-		normalizedHoursForKind
-	} from '$lib/logic/sessionKindPolicy';
+		applyKindToForm,
+		lessonFormUi,
+		syncEditorFormToKind
+	} from '$lib/logic/sessionKind';
 	import { setAbsent } from '$lib/repos/attendance.repo';
 	import { showToast } from '$lib/stores/toast';
 	import type { LessonSessionKind } from '$lib/db/types';
@@ -27,16 +24,28 @@
 		`${data.lesson.id}|${data.lesson.date}|${data.lesson.durationHours}|${data.lesson.title}|${data.lesson.done}|${data.lesson.sessionKind}`
 	);
 
+	const kindUi = $derived(lessonFormUi(sessionKind));
+
 	let absent = $state<Set<string>>(new Set());
 
 	$effect(() => {
 		const _ = formSeed;
 		const l = data.lesson;
 		date = l.date;
-		durationHours = l.durationHours;
 		title = l.title;
-		done = l.done;
 		sessionKind = l.sessionKind;
+		const synced = syncEditorFormToKind(l.sessionKind, {
+			durationHours: l.durationHours,
+			done: l.done
+		});
+		durationHours = synced.durationHours;
+		done = synced.done;
+	});
+
+	$effect(() => {
+		const synced = syncEditorFormToKind(sessionKind, { durationHours, done });
+		if (synced.durationHours !== durationHours) durationHours = synced.durationHours;
+		if (synced.done !== done) done = synced.done;
 	});
 
 	const absentSeed = $derived(data.absentIds.join('\0'));
@@ -60,9 +69,9 @@
 			fn: () =>
 				updateLesson(data.lesson.id, {
 					date,
-					durationHours: normalizedHoursForKind(sessionKind, h),
+					durationHours: h,
 					title,
-					done: doneEditableForKind(sessionKind) ? done : false,
+					done,
 					sessionKind
 				}),
 			invalidate: [...lessonInvalidateKeys],
@@ -74,19 +83,16 @@
 		const prev = sessionKind;
 		const prevDurationHours = durationHours;
 		const prevDone = done;
-		const { durationHours: nextHours, done: nextDone } = lessonFieldsForSessionKindChange(next, {
-			durationHours,
-			done
-		});
+		const nextFields = applyKindToForm(prev, next, { durationHours, done });
 		sessionKind = next;
-		durationHours = nextHours;
-		done = nextDone;
+		durationHours = nextFields.durationHours;
+		done = nextFields.done;
 		await runMutation({
 			fn: () =>
 				updateLesson(data.lesson.id, {
 					sessionKind: next,
-					durationHours: nextHours,
-					done: nextDone
+					durationHours: nextFields.durationHours,
+					done: nextFields.done
 				}),
 			invalidate: [...lessonInvalidateKeys],
 			errorToast: 'Could not update session kind.',
@@ -131,12 +137,13 @@
 				min="0"
 				step="0.25"
 				bind:value={durationHours}
-				disabled={!hoursEditableForKind(sessionKind)}
+				disabled={!kindUi.hoursEditable}
+				title={kindUi.hoursDisabledTitle}
 				onblur={persistLessonMeta}
 			/>
 		</label>
 		<label>
-			{labelForTitleField(sessionKind)}
+			{kindUi.titleLabel}
 			<input type="text" bind:value={title} onblur={persistLessonMeta} />
 		</label>
 		<label>
@@ -157,9 +164,10 @@
 			<input
 				type="checkbox"
 				bind:checked={done}
-				disabled={!doneEditableForKind(sessionKind)}
+				disabled={!kindUi.doneEditable}
+				title={kindUi.doneDisabledTitle}
 				onchange={() => {
-					if (!doneEditableForKind(sessionKind)) {
+					if (!kindUi.doneEditable) {
 						done = false;
 						return;
 					}
@@ -173,7 +181,7 @@
 
 <section class="card">
 	<h2>Attendance</h2>
-	{#if !attendanceVisibleForKind(sessionKind)}
+	{#if !kindUi.attendanceVisible}
 		<p class="muted">
 			{sessionKind === 'skipped'
 				? 'Skipped sessions do not have attendance.'

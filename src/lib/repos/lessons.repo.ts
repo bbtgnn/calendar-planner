@@ -1,12 +1,6 @@
 import { db } from '$lib/db/client';
 import type { ClassId, LessonId, LessonRow, LessonSessionKind } from '$lib/db/types';
-import {
-	assertCanChangeSessionKind,
-	coerceLessonPatchForSessionKind,
-	durationHoursForNewLesson,
-	shouldClearAbsencesOnSessionKindChange,
-	type LessonFieldPatch
-} from '$lib/logic/sessionKindPolicy';
+import { planLessonWrite, type LessonFieldPatch } from '$lib/logic/sessionKind';
 
 export async function listLessons(classId: ClassId): Promise<LessonRow[]> {
 	const rows = await db.lessons.where('classId').equals(classId).toArray();
@@ -26,14 +20,23 @@ export async function createLesson(input: {
 	sessionKind?: LessonSessionKind;
 }): Promise<LessonRow> {
 	const sessionKind = input.sessionKind ?? 'class';
+	const { patch } = planLessonWrite({
+		current: { sessionKind, durationHours: input.durationHours, done: false },
+		patch: {
+			sessionKind,
+			durationHours: input.durationHours,
+			title: input.title || 'Lesson'
+		},
+		absenceCount: 0
+	});
 	const row: LessonRow = {
 		id: crypto.randomUUID(),
 		classId: input.classId,
 		date: input.date,
-		durationHours: durationHoursForNewLesson(sessionKind, input.durationHours),
-		title: input.title || 'Lesson',
+		durationHours: patch.durationHours ?? input.durationHours,
+		title: (patch.title ?? input.title) || 'Lesson',
 		done: false,
-		sessionKind
+		sessionKind: patch.sessionKind ?? sessionKind
 	};
 	await db.lessons.add(row);
 	return row;
@@ -44,20 +47,26 @@ export async function updateLesson(id: LessonId, patch: LessonFieldPatch): Promi
 		const current = await db.lessons.get(id);
 		if (!current) return;
 
-		const nextKind = patch.sessionKind ?? current.sessionKind;
-
+		let absenceCount = 0;
 		if (patch.sessionKind === 'extra' && current.sessionKind !== 'extra') {
-			const absenceCount = await db.absences.where('lessonId').equals(id).count();
-			assertCanChangeSessionKind(current.sessionKind, nextKind, absenceCount);
+			absenceCount = await db.absences.where('lessonId').equals(id).count();
 		}
 
-		const nextPatch = coerceLessonPatchForSessionKind(current.sessionKind, patch);
+		const plan = planLessonWrite({
+			current: {
+				sessionKind: current.sessionKind,
+				durationHours: current.durationHours,
+				done: current.done
+			},
+			patch,
+			absenceCount
+		});
 
-		if (shouldClearAbsencesOnSessionKindChange(current.sessionKind, nextKind)) {
+		if (plan.clearAbsences) {
 			await db.absences.where('lessonId').equals(id).delete();
 		}
 
-		await db.lessons.update(id, nextPatch);
+		await db.lessons.update(id, plan.patch);
 	});
 }
 

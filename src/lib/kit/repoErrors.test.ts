@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest';
+import {
+	SessionKindErrorCode,
+	sessionKindError
+} from '$lib/logic/sessionKindErrors';
 import { RepoErrorCode, repoError, repoErrorMessage } from './repoErrors';
 
 describe('repoErrorMessage', () => {
+	it('maps session kind error codes', () => {
+		expect(
+			repoErrorMessage(sessionKindError(SessionKindErrorCode.EXTRA_BLOCKED_ABSENCES))
+		).toBe('Clear all absences for this session before marking it as Extra.');
+	});
+
 	it('maps known repo codes', () => {
-		expect(repoErrorMessage(repoError(RepoErrorCode.SESSION_KIND_EXTRA_BLOCKED_ABSENCES))).toBe(
-			'Clear all absences for this session before marking it as Extra.'
-		);
+		expect(repoErrorMessage(repoError(RepoErrorCode.CLASS_NOT_FOUND))).toBe('Class not found.');
 	});
 
 	it('maps semester validation messages', () => {
