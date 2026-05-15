@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { classLoadKey } from '$lib/kit/loadKeys';
+	import { classStudentsLoadKey } from '$lib/kit/loadKeys';
 	import { runMutation } from '$lib/kit/runMutation';
 	import {
 		addStudent,
@@ -22,13 +22,13 @@
 	let previewSkipped = $state(0);
 	let fileKind = $state<'csv' | 'txt' | null>(null);
 
-	const classKey = $derived(classLoadKey(data.class.id));
+	const classStudentsKey = $derived(classStudentsLoadKey(data.class.id));
 
 	async function add() {
 		if (!newName.trim()) return;
 		await runMutation({
 			fn: () => addStudent(data.class.id, newName.trim()),
-			invalidate: classKey,
+			invalidate: classStudentsKey,
 			errorToast: 'Could not add student.',
 			onSuccess: () => {
 				newName = '';
@@ -51,7 +51,7 @@
 		}
 		await runMutation({
 			fn: () => updateStudent(id, name),
-			invalidate: classKey,
+			invalidate: classStudentsKey,
 			errorToast: 'Could not save student.',
 			onSuccess: () => {
 				editingId = null;
@@ -63,7 +63,7 @@
 		if (!window.confirm('Remove this student and their absence records?')) return;
 		await runMutation({
 			fn: () => deleteStudentCascade(id),
-			invalidate: classKey,
+			invalidate: classStudentsKey,
 			errorToast: 'Could not remove student.'
 		});
 	}
@@ -92,7 +92,7 @@
 		if (previewNames.length === 0) return;
 		await runMutation({
 			fn: () => appendStudents(data.class.id, previewNames),
-			invalidate: classKey,
+			invalidate: classStudentsKey,
 			successToast: `Imported ${previewNames.length}, skipped ${previewSkipped}.`,
 			errorToast: 'Could not import students.',
 			onSuccess: () => {
@@ -113,7 +113,7 @@
 		}
 		await runMutation({
 			fn: () => replaceStudents(data.class.id, previewNames),
-			invalidate: classKey,
+			invalidate: classStudentsKey,
 			successToast: `Replaced with ${previewNames.length}, skipped ${previewSkipped}.`,
 			errorToast: 'Could not replace roster.',
 			onSuccess: () => {

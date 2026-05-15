@@ -10,7 +10,8 @@ vi.mock('$app/navigation', () => ({ invalidate }));
 vi.mock('$lib/stores/toast', () => ({ showToast }));
 vi.mock('$lib/db/withRetry', () => ({ withRetry }));
 
-import { invalidateClass, invalidateLoadKeys, runMutation } from './runMutation';
+import { invalidateClassMeta, invalidateLoadKeys, runMutation } from './runMutation';
+import { repoErrorMessage } from './repoErrors';
 
 describe('invalidateLoadKeys', () => {
 	beforeEach(() => {
@@ -28,14 +29,14 @@ describe('invalidateLoadKeys', () => {
 	});
 });
 
-describe('invalidateClass', () => {
+describe('invalidateClassMeta', () => {
 	beforeEach(() => {
 		invalidate.mockReset();
 	});
 
-	it('uses class load key', async () => {
-		await invalidateClass('id-1');
-		expect(invalidate).toHaveBeenCalledWith('class:id-1');
+	it('uses class meta load key', async () => {
+		await invalidateClassMeta('id-1');
+		expect(invalidate).toHaveBeenCalledWith('class:meta:id-1');
 	});
 });
 
@@ -78,28 +79,36 @@ describe('runMutation', () => {
 		expect(invalidate).not.toHaveBeenCalled();
 	});
 
-	it('uses mapError over errorToast', async () => {
+	it('uses mapError over repo registry and errorToast', async () => {
 		await runMutation({
 			fn: async () => {
 				throw new Error('SESSION_KIND_EXTRA_BLOCKED_ABSENCES');
 			},
 			errorToast: 'Generic',
-			mapError: (e) =>
-				e instanceof Error && e.message.includes('SESSION_KIND_EXTRA_BLOCKED_ABSENCES')
-					? 'Clear absences first.'
-					: undefined
+			mapError: () => 'Custom override'
 		});
 
-		expect(showToast).toHaveBeenCalledWith('Clear absences first.');
+		expect(showToast).toHaveBeenCalledWith('Custom override');
 	});
 
-	it('surfaces Error.message when mapError returns undefined and no errorToast', async () => {
+	it('uses repo error registry before errorToast', async () => {
 		await runMutation({
 			fn: async () => {
-				throw new Error('Semester end must be on or after start.');
+				throw new Error('SESSION_KIND_EXTRA_BLOCKED_ABSENCES');
+			},
+			errorToast: 'Generic'
+		});
+
+		expect(showToast).toHaveBeenCalledWith(repoErrorMessage(new Error('SESSION_KIND_EXTRA_BLOCKED_ABSENCES')));
+	});
+
+	it('surfaces registry message when no errorToast', async () => {
+		await runMutation({
+			fn: async () => {
+				throw new Error('Semester start must be on or before semester end.');
 			}
 		});
 
-		expect(showToast).toHaveBeenCalledWith('Semester end must be on or after start.');
+		expect(showToast).toHaveBeenCalledWith('Semester start must be on or before semester end.');
 	});
 });

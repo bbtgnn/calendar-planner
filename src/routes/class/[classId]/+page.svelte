@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import type { PageData } from './$types';
-	import { classLoadKey } from '$lib/kit/loadKeys';
-	import { invalidateClass, runMutation } from '$lib/kit/runMutation';
+	import { classLessonsLoadKey, classMetaLoadKey } from '$lib/kit/loadKeys';
+	import { invalidateClassMeta, runMutation } from '$lib/kit/runMutation';
 	import { createLesson, updateLesson, deleteLessonCascade } from '$lib/repos/lessons.repo';
 	import { updateClass } from '$lib/repos/classes.repo';
 	import { showToast } from '$lib/stores/toast';
@@ -11,8 +11,9 @@
 		hoursEditableForKind,
 		labelForKind,
 		labelForTitleField,
+		newSessionFormAfterKindChange,
 		normalizedHoursForKind
-	} from '$lib/logic/sessionKindUi';
+	} from '$lib/logic/sessionKindPolicy';
 	import {
 		sumScheduledTeacherHours,
 		remainingHours,
@@ -93,7 +94,8 @@
 		return Math.round((doneLessonCount(data.lessons) / s) * 100);
 	});
 
-	const classKey = $derived(classLoadKey(data.class.id));
+	const classMetaKey = $derived(classMetaLoadKey(data.class.id));
+	const classLessonsKey = $derived(classLessonsLoadKey(data.class.id));
 
 	async function saveTargets() {
 		const t = Number(targetHours);
@@ -112,7 +114,7 @@
 					totalHoursTarget: t,
 					requiredStudentLessonHours: m
 				}),
-			invalidate: classKey,
+			invalidate: classMetaKey,
 			successToast: 'Saved targets.',
 			errorToast: 'Could not save targets.'
 		});
@@ -137,7 +139,7 @@
 					title: newTitle,
 					sessionKind: newSessionKind
 				}),
-			invalidate: classKey,
+			invalidate: classLessonsKey,
 			errorToast: 'Could not add lesson.',
 			onSuccess: () => {
 				newDate = '';
@@ -152,20 +154,18 @@
 		const prevKind = newSessionKind;
 		const nextKind = (event.currentTarget as HTMLSelectElement).value as LessonSessionKind;
 		newSessionKind = nextKind;
-		if (nextKind === 'skipped') {
-			newHours = 0;
-			if (newTitle === 'Lesson') {
-				newTitle = '';
-			}
-		} else if (prevKind === 'skipped' && newHours === 0) {
-			newHours = 2;
-		}
+		const next = newSessionFormAfterKindChange(prevKind, nextKind, {
+			hours: newHours,
+			title: newTitle
+		});
+		newHours = next.hours;
+		newTitle = next.title;
 	}
 
 	async function toggleDone(lesson: LessonRow, done: boolean) {
 		await runMutation({
 			fn: () => updateLesson(lesson.id, { done }),
-			invalidate: classKey,
+			invalidate: classLessonsKey,
 			errorToast: 'Could not update lesson.'
 		});
 	}
@@ -174,7 +174,7 @@
 		if (!window.confirm('Delete this lesson and its attendance?')) return;
 		await runMutation({
 			fn: () => deleteLessonCascade(id),
-			invalidate: classKey,
+			invalidate: classLessonsKey,
 			errorToast: 'Could not delete lesson.'
 		});
 	}
@@ -240,7 +240,7 @@
 	lessons={data.lessons}
 	onSemesterSaved={async (c) => {
 		classSnapshot = c;
-		await invalidateClass(data.class.id);
+		await invalidateClassMeta(data.class.id);
 	}}
 />
 

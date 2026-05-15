@@ -1,7 +1,13 @@
 import { invalidate } from '$app/navigation';
 import { withRetry } from '$lib/db/withRetry';
 import type { CustomLoadKey } from '$lib/kit/loadKeys';
-import { classLoadKey } from '$lib/kit/loadKeys';
+import {
+	classLessonsLoadKey,
+	classMetaLoadKey,
+	classScopeLoadKeys,
+	classStudentsLoadKey
+} from '$lib/kit/loadKeys';
+import { repoErrorMessage } from '$lib/kit/repoErrors';
 import { showToast } from '$lib/stores/toast';
 
 export type MutationResult<T> = { ok: true; value: T } | { ok: false };
@@ -22,8 +28,20 @@ export async function invalidateLoadKeys(keys: CustomLoadKey | CustomLoadKey[]):
 	await Promise.all(list.map((key) => invalidate(key)));
 }
 
-export function invalidateClass(classId: string): Promise<void> {
-	return invalidateLoadKeys(classLoadKey(classId));
+export function invalidateClassMeta(classId: string): Promise<void> {
+	return invalidateLoadKeys(classMetaLoadKey(classId));
+}
+
+export function invalidateClassLessons(classId: string): Promise<void> {
+	return invalidateLoadKeys(classLessonsLoadKey(classId));
+}
+
+export function invalidateClassStudents(classId: string): Promise<void> {
+	return invalidateLoadKeys(classStudentsLoadKey(classId));
+}
+
+export function invalidateClassScope(classId: string): Promise<void> {
+	return invalidateLoadKeys(classScopeLoadKeys(classId));
 }
 
 function resolveErrorMessage(
@@ -33,6 +51,8 @@ function resolveErrorMessage(
 ): string {
 	const mapped = mapError?.(error);
 	if (mapped !== undefined) return mapped;
+	const fromRegistry = repoErrorMessage(error);
+	if (fromRegistry !== undefined) return fromRegistry;
 	if (errorToast !== undefined) return errorToast;
 	if (error instanceof Error && error.message) return error.message;
 	return 'Something went wrong.';

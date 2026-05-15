@@ -1,4 +1,5 @@
 import { db } from '$lib/db/client';
+import { RepoErrorCode, repoError } from '$lib/kit/repoErrors';
 import { assertValidSemesterBounds, mergeSemesterFields } from '$lib/logic/semesterCalendar';
 import type { ClassId, ClassRow } from '$lib/db/types';
 
@@ -35,7 +36,7 @@ export async function updateClass(
 	>
 ): Promise<void> {
 	const existing = await getClass(id);
-	if (!existing) throw new Error('Class not found.');
+	if (!existing) throw repoError(RepoErrorCode.CLASS_NOT_FOUND);
 	const mergedSemester = mergeSemesterFields(
 		{
 			semesterStart: existing.semesterStart ?? null,

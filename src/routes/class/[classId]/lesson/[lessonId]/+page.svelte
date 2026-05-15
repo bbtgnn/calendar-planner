@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { lessonLoadKey } from '$lib/kit/loadKeys';
+	import { classLessonsLoadKey, lessonLoadKey } from '$lib/kit/loadKeys';
 	import { invalidateLoadKeys, runMutation } from '$lib/kit/runMutation';
 	import { updateLesson } from '$lib/repos/lessons.repo';
 	import {
@@ -8,8 +8,9 @@
 		doneEditableForKind,
 		hoursEditableForKind,
 		labelForTitleField,
+		lessonFieldsForSessionKindChange,
 		normalizedHoursForKind
-	} from '$lib/logic/sessionKindUi';
+	} from '$lib/logic/sessionKindPolicy';
 	import { setAbsent } from '$lib/repos/attendance.repo';
 	import { showToast } from '$lib/stores/toast';
 	import type { LessonSessionKind } from '$lib/db/types';
@@ -46,6 +47,8 @@
 	});
 
 	const lessonKey = $derived(lessonLoadKey(data.lesson.id));
+	const classLessonsKey = $derived(classLessonsLoadKey(data.lesson.classId));
+	const lessonInvalidateKeys = $derived([lessonKey, classLessonsKey] as const);
 
 	async function persistLessonMeta() {
 		const h = Number(durationHours);
@@ -62,6 +65,7 @@
 					done: doneEditableForKind(sessionKind) ? done : false,
 					sessionKind
 				}),
+			invalidate: [...lessonInvalidateKeys],
 			errorToast: 'Could not save lesson.'
 		});
 	}
@@ -70,8 +74,10 @@
 		const prev = sessionKind;
 		const prevDurationHours = durationHours;
 		const prevDone = done;
-		const nextHours = normalizedHoursForKind(next, Number(durationHours));
-		const nextDone = doneEditableForKind(next) ? done : false;
+		const { durationHours: nextHours, done: nextDone } = lessonFieldsForSessionKindChange(next, {
+			durationHours,
+			done
+		});
 		sessionKind = next;
 		durationHours = nextHours;
 		done = nextDone;
@@ -82,14 +88,8 @@
 					durationHours: nextHours,
 					done: nextDone
 				}),
-			invalidate: lessonKey,
+			invalidate: [...lessonInvalidateKeys],
 			errorToast: 'Could not update session kind.',
-			mapError: (e) => {
-				const msg = e instanceof Error ? e.message : String(e);
-				if (msg.includes('SESSION_KIND_EXTRA_BLOCKED_ABSENCES')) {
-					return 'Clear all absences for this session before marking it as Extra.';
-				}
-			},
 			onError: () => {
 				sessionKind = prev;
 				durationHours = prevDurationHours;

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { ClassRow, LessonRow } from '$lib/db/types';
+	import { classMetaLoadKey } from '$lib/kit/loadKeys';
 	import { runMutation } from '$lib/kit/runMutation';
 	import { updateClass } from '$lib/repos/classes.repo';
 	import { showToast } from '$lib/stores/toast';
@@ -37,6 +38,7 @@
 		if (a === '' && b === '') {
 			await runMutation({
 				fn: () => updateClass(klass.id, { semesterStart: null, semesterEnd: null }),
+				invalidate: classMetaLoadKey(klass.id),
 				successToast: 'Semester cleared.',
 				onSuccess: () =>
 					onSemesterSaved?.({
@@ -60,9 +62,9 @@
 		}
 		await runMutation({
 			fn: () => updateClass(klass.id, { semesterStart: a, semesterEnd: b }),
+			invalidate: classMetaLoadKey(klass.id),
 			successToast: 'Semester saved.',
 			errorToast: 'Could not save semester.',
-			mapError: (e) => (e instanceof Error ? e.message : undefined),
 			onSuccess: () =>
 				onSemesterSaved?.({
 					...klass,

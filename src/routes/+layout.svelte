@@ -2,7 +2,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { CLASSES_LIST_LOAD_KEY } from '$lib/kit/loadKeys';
+	import { CLASSES_LIST_LOAD_KEY, classMetaLoadKey, classScopeLoadKeys } from '$lib/kit/loadKeys';
 	import { runMutation } from '$lib/kit/runMutation';
 	import { toastMessage } from '$lib/stores/toast';
 	import { createClass, deleteClassCascade, updateClass } from '$lib/repos/classes.repo';
@@ -37,7 +37,7 @@
 		if (!trimmed || trimmed === current.trim()) return;
 		await runMutation({
 			fn: () => updateClass(routeClassId, { name: trimmed }),
-			invalidate: CLASSES_LIST_LOAD_KEY,
+			invalidate: [CLASSES_LIST_LOAD_KEY, classMetaLoadKey(routeClassId)],
 			errorToast: 'Could not rename class.'
 		});
 	}
@@ -47,7 +47,7 @@
 		if (!window.confirm('Delete this class and all its data?')) return;
 		await runMutation({
 			fn: () => deleteClassCascade(routeClassId),
-			invalidate: CLASSES_LIST_LOAD_KEY,
+			invalidate: [CLASSES_LIST_LOAD_KEY, ...classScopeLoadKeys(routeClassId)],
 			errorToast: 'Could not delete class.',
 			onSuccess: async () => {
 				clearLastClassId();
