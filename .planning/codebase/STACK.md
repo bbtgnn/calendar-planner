@@ -5,80 +5,87 @@
 ## Languages
 
 **Primary:**
-- TypeScript `^6.0.2` — All application logic under `src/` (`.ts` modules, Svelte `<script lang="ts">` in `.svelte` routes and components)
-- Svelte 5 — UI in `src/routes/**/*.svelte` and `src/routes/class/[classId]/SemesterMap.svelte`; uses runes (`$props`, `$state`, `$derived`)
+- TypeScript 6.0.3 — All application logic under `src/` (`*.ts`, `*.svelte` with `<script lang="ts">`)
+- Svelte 5.55.4 — UI components and runes-based reactivity in `src/routes/**/*.svelte` and `src/routes/class/[classId]/SemesterMap.svelte`
 
 **Secondary:**
-- JavaScript — SvelteKit config in `svelte.config.js` (ESM); GSD tooling under `.cursor/get-shit-done/` (not part of the app runtime)
-- HTML — Shell in `src/app.html`
+- HTML — Shell template in `src/app.html`
+- JavaScript — Config only: `svelte.config.js` (ESM)
 
 ## Runtime
 
 **Environment:**
-- Browser (client-only SPA). Root layout disables SSR: `export const ssr = false` in `src/routes/+layout.ts`
-- Node.js — Used for dev/build/test tooling (Vitest `environment: 'node'` in `vite.config.ts`); no Node server in production
+- Browser (client-only SPA). SvelteKit SSR and prerender are explicitly disabled in `src/routes/+layout.ts` (`ssr = false`, `prerender = false`).
+- No Node server endpoints: no `src/hooks.server.ts`, no `+server.ts` routes detected.
 
 **Package Manager:**
-- Bun `1.3.12` (documented in `README.md`; `test` script invokes `bun run test:unit`)
-- Lockfile: `bun.lock` present
-- `.npmrc`: `engine-strict=true` (enforces declared engine constraints when using npm-compatible clients)
+- Bun — Required per `README.md`; install and scripts use `bun`
+- Lockfile: `bun.lock` present (lockfileVersion 1)
 
 ## Frameworks
 
 **Core:**
-- SvelteKit `^2.57.0` — Routing, loads, navigation (`$app/navigation`, `$app/state`, `$app/paths`)
-- Svelte `^5.55.2` — Components and reactivity
-- Vite `^8.0.7` — Dev server and production bundling via `@sveltejs/vite-plugin-svelte` `^7.0.0`
+- SvelteKit 2.57.1 — Routing, layouts, `load` functions, `$app/navigation` invalidation (`src/routes/`, `src/lib/kit/`)
+- Svelte 5.55.4 — Component framework
+- Vite 8.0.9 — Dev server and production bundler (`vite.config.ts`)
+
+**Data:**
+- Dexie 4.4.2 — IndexedDB wrapper; schema and migrations in `src/lib/db/client.ts`
 
 **Testing:**
-- Vitest `^4.1.3` — Unit tests; config merged in `vite.config.ts` (`test.projects` with `environment: 'node'`)
-- `fake-indexeddb` `^6.2.5` — Polyfills IndexedDB in tests (`src/test/setup.ts` imports `fake-indexeddb/auto`)
+- Vitest 4.1.4 — Unit tests (`vite.config.ts` test project, `src/**/*.test.ts`)
+- fake-indexeddb 6.2.5 — In-memory IndexedDB for Node test environment (`src/test/setup.ts`)
 
 **Build/Dev:**
-- `@sveltejs/adapter-static` `^3.0.10` — Static export to `build/` with SPA fallback `index.html` (`svelte.config.js`)
-- `svelte-check` `^4.4.6` — Type-check Svelte + TS (`bun run check`)
-- `@sveltejs/adapter-auto` `^7.0.1` — Listed in devDependencies but **not** wired in `svelte.config.js` (static adapter is active)
+- `@sveltejs/adapter-static` 3.0.10 — Static SPA output to `build/` with `index.html` fallback (`svelte.config.js`)
+- `@sveltejs/vite-plugin-svelte` 7.0.0 — Svelte preprocessing in Vite
+- svelte-check 4.4.6 — Type and Svelte diagnostics (`bun run check`)
+
+**Installed but unused at runtime:**
+- `@sveltejs/adapter-auto` 7.0.1 — Listed in `package.json` devDependencies; `svelte.config.js` uses `adapter-static` instead
 
 ## Key Dependencies
 
 **Critical:**
-- `dexie` `^4.4.2` — IndexedDB ORM; schema and migrations in `src/lib/db/client.ts` (`LessonPlannerDB`, database name `lesson-planner-db`)
+- `dexie` 4.4.2 — Persistent storage for classes, students, lessons, absences (`src/lib/db/client.ts`, repos under `src/lib/repos/`)
 
-**Infrastructure:**
-- None beyond Dexie — No HTTP client, auth SDK, or cloud database in `package.json` dependencies
+**Infrastructure (dev/tooling only):**
+- `@sveltejs/kit`, `vite`, `typescript`, `vitest` — Build, typecheck, test pipeline
+- GitNexus — Code intelligence indexed for agents (see `AGENTS.md`, `CLAUDE.md`); not a runtime dependency
 
-**Dev-only (quality):**
-- `typescript`, `svelte-check`, `vitest`, `fake-indexeddb`, SvelteKit adapters
+**Browser APIs (no npm package):**
+- `crypto.randomUUID()` — Primary keys in `src/lib/repos/classes.repo.ts`, `src/lib/repos/lessons.repo.ts`, `src/lib/repos/students.repo.ts`
+- `localStorage` — Last-selected class id (`src/lib/preferences/activeClass.ts`)
+- `FileReader` + `<input type="file">` — Roster import from `.txt` / `.csv` (`src/routes/class/[classId]/students/+page.svelte`)
+- `window.prompt` / `window.confirm` — Class CRUD confirmations (`src/routes/+layout.svelte`, lesson/student delete flows)
 
 ## Configuration
 
 **Environment:**
-- No `.env`, `.env.example`, or `import.meta.env` usage in `src/`
-- `.gitignore` allows `.env.example` / `.env.test` but none are committed; app does not require secrets at runtime
+- No `.env` or `.env.example` files in the repository
+- `.gitignore` ignores `.env` and `.env.*` (allows `.env.example` / `.env.test` if added later)
+- Application code does not reference `import.meta.env` or `process.env` under `src/`
 
 **Build:**
-- `vite.config.ts` — SvelteKit plugin + Vitest project extending same config
-- `svelte.config.js` — `adapter-static` with `fallback: 'index.html'`, `vitePreprocess()`
-- `tsconfig.json` — Extends `.svelte-kit/tsconfig.json`; `strict: true`, `moduleResolution: "bundler"`, `rewriteRelativeImportExtensions: true`
-- Path alias: `$lib` → `src/lib` (SvelteKit default)
+- `svelte.config.js` — Static adapter, SPA fallback `index.html`
+- `vite.config.ts` — SvelteKit plugin; Vitest with Node environment and `src/test/setup.ts`
+- `tsconfig.json` — Strict TypeScript, extends `.svelte-kit/tsconfig.json`, `moduleResolution: "bundler"`
+- Path alias `$lib` → `src/lib/` (SvelteKit default)
 
-**App behavior flags:**
-- `src/routes/+layout.ts`: `ssr = false`, `prerender = false` — Fully client-rendered; data loaded in browser via Dexie in `load` functions
+**App metadata:**
+- `package.json` name: `lesson-planner` (private, version `0.0.1`, `"type": "module"`)
 
 ## Platform Requirements
 
 **Development:**
-- Bun for install and scripts (`README.md`)
-- Modern browser with IndexedDB, `localStorage`, `crypto.randomUUID`, and `FileReader` (roster import in `src/routes/class/[classId]/students/+page.svelte`)
+- Bun for `bun install`, `bun run dev`, `bun run test`, `bun run check`
+- Modern browser with IndexedDB, `localStorage`, and Web Crypto `randomUUID`
 
 **Production:**
-- Static file hosting only — `bun run build` → `build/` directory
-- SPA routing: host must serve `index.html` for unknown paths (configured via adapter `fallback`)
-- `.gitignore` lists `.vercel`, `.netlify`, `.wrangler` as possible output dirs; no platform config files in repo — deployment target is generic static hosting
-
-**Styling:**
-- Component-scoped `<style>` blocks in Svelte files (no Tailwind, PostCSS, or global CSS package)
-- Favicon: `src/lib/assets/favicon.svg` (imported from `src/routes/+layout.svelte`)
+- Static file hosting only (any CDN, nginx, GitHub Pages, Netlify, Vercel static, etc.)
+- Build artifact: `build/` directory after `bun run build`
+- SPA routing: server must serve `index.html` for unknown paths (configured via adapter `fallback: 'index.html'`)
+- No backend, database server, or environment secrets required for core app behavior
 
 ---
 

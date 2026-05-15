@@ -4,196 +4,174 @@
 
 ## Tech Debt
 
-**Monolithic route components (UI + persistence + stats in one file):**
-- Issue: Class schedule, semester map, students, and lesson detail pages each embed Dexie calls, validation, derived contract stats, and large scoped CSS in single `.svelte` files instead of shared components or a thin “actions” layer.
-- Files: `src/routes/class/[classId]/+page.svelte` (~488 lines), `src/routes/class/[classId]/SemesterMap.svelte` (~303 lines), `src/routes/class/[classId]/students/+page.svelte` (~259 lines), `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte` (~272 lines), `src/routes/+layout.svelte` (~167 lines)
-- Impact: Harder to test UI flows, higher merge conflict risk, and duplicated patterns (toast + `withRetry` + `invalidate`) across routes.
-- Fix approach: Extract presentational components (stats panel, lesson table, roster list) and small route-local helpers; keep repos/logic pure and covered by existing unit tests.
-
-**Non-transactional student append:**
-- Issue: `appendStudents` performs one `db.students.add` per name with no Dexie transaction, unlike `replaceStudents` and cascade deletes.
-- Files: `src/lib/repos/students.repo.ts`
-- Impact: A mid-loop failure can leave a partial import with no rollback.
-- Fix approach: Wrap the loop in `db.transaction('rw', db.students, async () => { ... })`, mirroring `replaceStudents`.
-
-**Silent no-op on missing lesson update:**
-- Issue: `updateLesson` returns early when the lesson row is missing instead of throwing, so callers cannot distinguish “saved” from “nothing to update.”
-- Files: `src/lib/repos/lessons.repo.ts`
-- Impact: Stale UI or race after delete may appear to succeed until the next `invalidate`.
-- Fix approach: Throw a dedicated error (e.g. `LESSON_NOT_FOUND`) and handle it in route handlers with toast + revalidate.
-
-**Generic error swallowing in UI:**
-- Issue: Most `try/catch` blocks in routes only call `showToast('Could not …')` without logging error type, Dexie failure, or validation message (except session-kind and semester paths).
-- Files: `src/routes/+layout.svelte`, `src/routes/class/[classId]/+page.svelte`, `src/routes/class/[classId]/students/+page.svelte`, `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte`
-- Impact: Production debugging and distinguishing user error vs storage failure is difficult.
-- Fix approach: Centralize `handleRepoError(e, fallbackMessage)` that maps known `Error.message` values and optionally logs unknown errors in dev.
-
-**Blocking browser dialogs for core CRUD:**
-- Issue: Class create/rename and destructive actions use `window.prompt` / `window.confirm` instead of in-app modals.
+**Browser-native dialogs for destructive and create flows:**
+- Issue: Class create/rename/delete and roster/lesson deletes use `window.prompt` and `window.confirm` instead of in-app UI. Poor accessibility, no styling, blocks the main thread, and is awkward on mobile.
 - Files: `src/routes/+layout.svelte`, `src/routes/class/[classId]/+page.svelte`, `src/routes/class/[classId]/students/+page.svelte`
-- Impact: Poor mobile UX, no styling, and harder automated testing.
-- Fix approach: Replace with accessible Svelte dialog components; keep confirm copy aligned with cascade behavior in repos.
+- Impact: Inconsistent UX; harder to add validation previews or undo.
+- Fix approach: Add a small shared confirm/dialog component (the implementation plan mentions `src/lib/ui/ConfirmDialog.svelte` but it was never added) and replace native dialogs.
+
+**Duplicated page styling (no shared UI layer):**
+- Issue: Each route duplicates `.card`, `.btn`, table, and form styles in scoped `<style>` blocks. The plan referenced `src/lib/ui/` components that do not exist.
+- Files: `src/routes/class/[classId]/+page.svelte` (~481 lines), `src/routes/class/[classId]/students/+page.svelte`, `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte`, `src/routes/class/[classId]/SemesterMap.svelte`, `src/routes/+layout.svelte`
+- Impact: Visual drift and large diffs when changing design tokens.
+- Fix approach: Extract shared layout primitives under `src/lib/ui/` or a single `app.css` with utility classes.
+
+**Legacy stats alias kept alongside kind-aware API:**
+- Issue: `sumScheduledHours` duplicates `sumScheduledTeacherHours` behavior (both sum all `durationHours`). Docs/plans still reference the older name.
+- Files: `src/lib/logic/stats.ts`, `src/lib/logic/stats.test.ts`, `docs/superpowers/plans/2026-04-20-lesson-planner.md`
+- Impact: Confusing API for future stats work; risk of calling the wrong helper when adding kind filters.
+- Fix approach: Deprecate `sumScheduledHours` with a thin alias comment, or remove after grep-driven migration.
 
 **Unused npm dependency:**
 - Issue: `@sveltejs/adapter-auto` is listed in `package.json` devDependencies but `svelte.config.js` uses `@sveltejs/adapter-static` only.
 - Files: `package.json`, `svelte.config.js`
-- Impact: Confusing deploy docs and extra install surface.
-- Fix approach: Remove `adapter-auto` or document why both are kept.
+- Impact: Install bloat and confusion about deployment target.
+- Fix approach: Remove `@sveltejs/adapter-auto` from `package.json`.
 
-**No ESLint / Prettier project config:**
-- Issue: Repository relies on `svelte-check` only; no shared lint or format config at repo root.
-- Files: `package.json` (scripts `check`, `test` only)
-- Impact: Style drift across large Svelte files; no automated import/order or a11y rules.
-- Fix approach: Add `eslint` + `eslint-plugin-svelte` and optional Prettier aligned with Svelte 5 conventions.
+**No formatter/linter toolchain:**
+- Issue: No ESLint, Prettier, or Biome config in the repo. Quality relies on `svelte-check` and Vitest only.
+- Files: repo root (absence of `eslint.config.*`, `.prettierrc*`)
+- Impact: Inconsistent style across contributors; some issues only caught at review time.
+- Fix approach: Add ESLint (Svelte plugin) + Prettier or Biome aligned with SvelteKit defaults.
 
 ## Known Bugs
 
-**Lesson detail blur-save can desync UI from IndexedDB:**
-- Symptoms: User edits date/hours/title on the lesson page; `onblur` calls `persistLessonMeta`, which updates local `$state` bindings but does not `invalidate` on success. If the write fails, the form still shows edited values while Dexie retains the previous row.
-- Files: `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte` (`persistLessonMeta`, `onblur` handlers)
-- Trigger: IndexedDB error or rejected `updateLesson` after blur.
-- Workaround: Navigate away and back, or change session kind (which revalidates on success).
+**`updateLesson` no-ops when lesson id is missing:**
+- Symptoms: `updateLesson` returns successfully without throwing or updating if the lesson row does not exist.
+- Files: `src/lib/repos/lessons.repo.ts` (early `return` when `!current`)
+- Trigger: Stale bookmark to deleted lesson, race after delete, or bad id.
+- Workaround: Lesson route load throws 404 via `getLesson` in `src/routes/class/[classId]/lesson/[lessonId]/+page.ts`; inline edits on the class list could still call `updateLesson` with a stale id until invalidation completes.
 
-**CSV roster import mishandles quoted commas:**
-- Symptoms: Names or fields containing commas inside quotes may be parsed incorrectly because only the substring before the first comma is used.
-- Files: `src/lib/logic/rosterImport.ts` (`firstCell`)
-- Trigger: Import a `.csv` where the name column includes `", "` or standard CSV escaping.
-- Workaround: Use `.txt` one-name-per-line import.
-
-**Import treats any non-`.csv` extension as plain text:**
-- Symptoms: A misnamed file (e.g. `.tsv`, `.xlsx` renamed) is read as line-based text; parsing may produce garbage names without a hard error.
-- Files: `src/routes/class/[classId]/students/+page.svelte` (`onFile`, `fileKind` logic)
-- Trigger: User selects a non-CSV, non-TXT file.
-- Workaround: Use `.csv` or `.txt` only; verify preview before append/replace.
+**`appendStudents` is not transactional:**
+- Symptoms: If one `db.students.add` fails mid-loop, earlier names may persist without a full rollback.
+- Files: `src/lib/repos/students.repo.ts` (`appendStudents`)
+- Trigger: Large import or IndexedDB errors during bulk append.
+- Workaround: Use `replaceStudents` (wrapped in `db.transaction`) when atomicity matters; prefer smaller batches.
 
 ## Security Considerations
 
-**Local-only data with no access control:**
-- Risk: All class, student, and attendance data live in the user’s browser IndexedDB (`lesson-planner-db`); anyone with device or profile access can read or tamper with data via devtools. There is no auth layer by design.
-- Files: `src/lib/db/client.ts`, all `src/lib/repos/*.ts`, `src/routes/+layout.ts` (`ssr = false`)
-- Current mitigation: Static SPA, no server, no secrets in repo (no `.env` files detected).
-- Recommendations: Document threat model in README; if deployed on shared machines, warn users; do not add secrets to the client bundle.
+**All data is local and unauthenticated (by design):**
+- Risk: Any script running in the origin (XSS, malicious extension) can read/write IndexedDB and `localStorage`. There is no server-side access control.
+- Files: `src/lib/db/client.ts`, `src/lib/preferences/activeClass.ts`, all `src/lib/repos/*.ts`
+- Current mitigation: Static SPA, no network API, no user-generated HTML rendering (`{@html}` not used in app routes).
+- Recommendations: Keep avoiding `{@html}`; if adding rich text later, sanitize. Do not add third-party scripts without CSP review.
 
-**Unbounded client-side file read on import:**
-- Risk: `FileReader.readAsText` loads the entire selected file into memory with no size cap; a very large upload could freeze or crash the tab.
-- Files: `src/routes/class/[classId]/students/+page.svelte`
-- Current mitigation: Teacher-controlled local files only; preview before commit.
-- Recommendations: Enforce max file size (e.g. 1–2 MB) and row count before parse; show explicit error in UI.
+**Roster import reads arbitrary user files in-browser:**
+- Risk: Very large files can block the main thread during `FileReader` + parse; no size cap.
+- Files: `src/routes/class/[classId]/students/+page.svelte`, `src/lib/logic/rosterImport.ts`
+- Current mitigation: Parsing is synchronous but local-only (no upload).
+- Recommendations: Cap file size (e.g. 1 MB), stream or chunk parsing for large rosters.
 
-**Student roster data in browser storage:**
-- Risk: Student names are PII stored unencrypted in IndexedDB; clearing site data or browser uninstall loses records with no recovery path.
-- Files: `src/lib/db/client.ts`, `src/lib/repos/students.repo.ts`
-- Current mitigation: Confirmed destructive replace with `window.confirm`.
-- Recommendations: Optional export/backup (called out as v1 non-goal in `docs/superpowers/specs/2026-04-20-lesson-planner-design.md`); warn in UI about data loss on “clear site data.”
+**No secrets in repo (good):**
+- `.env` not required for runtime; app has no backend credentials surface.
 
 ## Performance Bottlenecks
 
-**Full lesson list reload per class invalidation:**
-- Problem: Class schedule load always fetches all lessons for the class; every `invalidate(classLoadKey)` re-runs `listLessons` and re-renders large tables and `SemesterMap` month grids.
-- Files: `src/routes/class/[classId]/+page.ts`, `src/lib/repos/lessons.repo.ts`, `src/routes/class/[classId]/+page.svelte`, `src/routes/class/[classId]/SemesterMap.svelte`
-- Cause: No pagination or incremental queries; semester map builds multiple 6×7 grids from full `lessons` array.
-- Improvement path: Debounce target saves; invalidate only affected slices where possible; memoize month grids per `yearMonth` if classes grow large (hundreds of sessions).
+**Semester map renders full month grids in the DOM:**
+- Problem: For each `YYYY-MM` in range, `monthGridMondayFirst` emits 42 cells; a multi-year semester creates hundreds of DOM nodes and re-renders on every lesson change via `uniqueKindsByDate`.
+- Files: `src/routes/class/[classId]/SemesterMap.svelte`, `src/lib/logic/semesterCalendar.ts`
+- Cause: Eager horizontal strip of all months; `{@const}` and nested `{#each}` per cell.
+- Improvement path: Virtualize months, collapse off-screen months, or render a single month with navigation for long ranges.
 
-**Semester map renders all months in range at once:**
-- Problem: For a long semester, `listYearMonthsInRange` drives many month grids (42 cells each) in one DOM subtree.
-- Files: `src/lib/logic/semesterCalendar.ts`, `src/routes/class/[classId]/SemesterMap.svelte`
-- Cause: Eager rendering of every month between start and end.
-- Improvement path: Virtualize months or collapse to a single scrollable strip with lazy mount.
+**Lesson list loaded entirely per class:**
+- Problem: `listLessons` loads all lessons for a class into memory and sorts in JS; no pagination.
+- Files: `src/lib/repos/lessons.repo.ts`, `src/routes/class/[classId]/+page.ts`
+- Cause: Dexie query + in-memory `sort`; no composite index for `classId+date` (plan mentioned it; schema uses separate indexes only in `src/lib/db/client.ts`).
+- Improvement path: Add Dexie compound index `[classId+date]` if filtering grows; paginate UI for classes with many sessions.
+
+**IndexedDB retry is minimal:**
+- Problem: `withRetry` defaults to a single retry (`retries ?? 1` → 2 attempts total). Transient IDB contention may still fail.
+- Files: `src/lib/db/withRetry.ts`, `src/lib/kit/runMutation.ts`
+- Cause: Conservative retry to avoid duplicate writes without idempotency keys.
+- Improvement path: Classify retriable Dexie errors explicitly; use transactions + idempotent keys where needed.
 
 ## Fragile Areas
 
-**Contract stats and session-kind rules:**
-- Files: `src/lib/logic/stats.ts`, `src/lib/logic/sessionKindUi.ts`, `src/routes/class/[classId]/+page.svelte`, `src/lib/repos/lessons.repo.ts`
-- Why fragile: Teacher/student hour conversion constants (`60` / `50` minutes), flex-pool formulas, and session-kind transitions (e.g. blocking `class` → `extra` when absences exist) must stay consistent across UI, repo, and tests.
-- Safe modification: Change `stats.ts` and extend `src/lib/logic/stats.test.ts` first; run full `bun run test`; update `lessons.repo.test.ts` for new session-kind rules.
-- Test coverage: Strong unit coverage on stats and lesson repo; no UI/integration tests for the overview stats panel.
+**UTC calendar math vs local date inputs:**
+- Files: `src/lib/logic/semesterCalendar.ts` (`toUtcIsoCalendarDate`, `monthGridMondayFirst`), `src/routes/class/[classId]/SemesterMap.svelte` (`todayUtcIso`), date `<input type="date">` in routes
+- Why fragile: “Today” highlighting uses UTC ISO dates while `<input type="date">` values follow the user’s local calendar. Near timezone boundaries, today on the map may not match the teacher’s local date.
+- Safe modification: Add tests with fixed `Date` mocks for TZ edges; document that stored lesson dates are plain `YYYY-MM-DD` strings without TZ.
+- Test coverage: `src/lib/logic/semesterCalendar.test.ts` covers grid math but not TZ boundary cases against UI.
+
+**Session kind + attendance coupling:**
+- Files: `src/lib/logic/sessionKindPolicy.ts`, `src/lib/repos/lessons.repo.ts`, `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte`
+- Why fragile: Rules span UI disables, repo throws (`SESSION_KIND_EXTRA_BLOCKED_ABSENCES`), and absence clearing on kind change. Easy to break one layer without updating others.
+- Safe modification: Change policy only in `sessionKindPolicy.ts` and extend `src/lib/logic/sessionKindPolicy.test.ts` + `src/lib/repos/lessons.repo.test.ts` together.
+- Test coverage: Good for repo/policy; no Svelte component tests.
 
 **Dexie schema migrations:**
 - Files: `src/lib/db/client.ts` (versions 1–3 with `.upgrade` hooks)
-- Why fragile: New indexes or field defaults require a new `version(n)` block; mistakes can brick existing user DBs in the wild.
-- Safe modification: Add versioned upgrade with backfill tests using `fake-indexeddb` (see `src/test/setup.ts`); smoke-test open/migrate in `src/lib/db/client.smoke.test.ts`.
-- Test coverage: Smoke test only; no automated test per migration path.
+- Why fragile: Future schema changes must keep upgrade paths idempotent; mixed client versions are not a concern (local only), but a bad upgrade can brick local data.
+- Safe modification: Add migration tests that seed v1-shaped data and open DB; bump version with explicit upgrade steps only.
+- Test coverage: `src/lib/db/client.smoke.test.ts` only checks basic put/get, not upgrades.
 
-**Attendance optimistic UI:**
-- Files: `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte` (`toggleAbsent` updates `Set` then writes; revalidates only on failure)
-- Why fragile: Optimistic absent set can disagree with DB until failure path runs.
-- Safe modification: Keep optimistic UX but revalidate on success for long-term consistency, or revert set on catch (partially done on error).
-
-**Class switcher when `routeClassId` is empty:**
-- Files: `src/routes/+layout.svelte` (`<select value={routeClassId}>` on home redirect route)
-- Why fragile: On `/` before redirect, `routeClassId` may be empty while options exist; behavior depends on browser select handling.
-- Safe modification: Hide switcher until `routeClassId` is set or bind to first class id explicitly.
+**Optimistic attendance UI without success invalidation:**
+- Files: `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte` (`toggleAbsent` updates local `Set` then persists; invalidates `lessonKey` only on error)
+- Why fragile: Assumes server state equals optimistic state; second tab or external DB edit could desync until manual refresh.
+- Safe modification: Invalidate `lessonLoadKey` on success as well, or reload absent ids after `runMutation` succeeds.
 
 ## Scaling Limits
 
-**IndexedDB single-database, client-only:**
-- Current capacity: Suitable for typical class sizes (tens of students, tens to low hundreds of lessons per class); Dexie handles thousands of rows on modern browsers.
-- Limit: No sync across devices; one browser profile = one dataset; private mode may restrict persistence.
-- Scaling path: Export/import JSON backup, optional cloud sync (explicit v1 non-goal in design spec).
+**IndexedDB per-origin storage:**
+- Current capacity: Browser-dependent (often hundreds of MB to GB); all classes, students, lessons, and absences for one teacher.
+- Limit: Private browsing modes may reject or clear storage; `QuotaExceededError` is not handled at app startup.
+- Scaling path: Catch open/write failures in layout load and show a blocking error UI; optional export/import JSON for backup.
 
-**No CI pipeline in repository:**
-- Current capacity: Tests run locally via `bun run test`; no `.github/workflows` detected.
-- Limit: Regressions can land without automated check on PRs.
-- Scaling path: Add GitHub Actions running `bun run check` and `bun run test` on push/PR.
+**Single-device, single-user model:**
+- Current capacity: One teacher’s data per browser profile.
+- Limit: No sync across devices; clearing site data loses everything.
+- Scaling path: Optional export/import or future sync layer (out of scope today).
 
 ## Dependencies at Risk
 
-**SvelteKit + Vite major versions:**
-- Risk: Project pins current majors (`@sveltejs/kit` ^2.57, `vite` ^8.0.7, `svelte` ^5.55); Svelte 5 runes and Kit 2 load APIs are still evolving.
-- Impact: Upgrades may require runes/`$effect` pattern updates across route components.
-- Migration plan: Run `bun run check` after any Kit/Svelte bump; add component tests before large upgrades.
-
-**Dexie 4.x as sole persistence:**
-- Risk: All application state depends on Dexie schema and browser IndexedDB availability; Safari private mode and corporate policies can block or clear storage.
-- Impact: Total data loss from user or IT policy; no server recovery.
-- Migration plan: Optional export format documented in a future phase; keep migration hooks versioned in `client.ts`.
+**No automated dependency or CI updates:**
+- Risk: `package.json` pins ranges (`^`) without lockfile discipline visible in analysis; no GitHub Actions workflow detected.
+- Impact: Regressions from Dexie/SvelteKit majors may land unnoticed until manual `bun run test`.
+- Migration plan: Add CI running `bun run test` and `bun run check`; consider committing `bun.lock` if not already standard for the team.
 
 ## Missing Critical Features
 
-**Export / import backup (documented non-goal for v1):**
-- Problem: No way to backup or restore Dexie data except manual devtools; device loss or “clear site data” is irreversible.
-- Blocks: Multi-device use, disaster recovery, migration to another browser.
-- Reference: `docs/superpowers/specs/2026-04-20-lesson-planner-design.md` (Non-goals: no full export/import backup).
+**Data backup and restore:**
+- Problem: No export/import of Dexie data; README states data stays in IndexedDB only (`README.md`).
+- Blocks: Recovery after browser data wipe, migration to a new machine, or audit archival.
 
-**Cloud sync and accounts:**
-- Problem: By design, no backend; teachers cannot share rosters across machines without manual file import of names only (not full class/lesson state).
-- Blocks: Team or substitute-teacher workflows.
+**Production CI and deployment docs:**
+- Problem: No `.github/workflows` for test/check on PRs; deployment is manual static hosting per README (`bun run build` → `build/`).
+- Blocks: Team confidence on merges without local discipline.
 
-**Recurring lesson templates:**
-- Problem: Every session date is manual entry; no weekly pattern generator.
-- Blocks: Faster semester setup for fixed timetables (also listed as non-goal in design spec).
+**In-app class/lesson editing beyond prompts:**
+- Problem: Creating a class always uses `totalHoursTarget: 40` from `window.prompt` flow only (`src/routes/+layout.svelte`).
+- Blocks: Teachers cannot set initial contract targets at creation without editing on the schedule page.
 
 ## Test Coverage Gaps
 
-**No tests for attendance repository:**
-- What's not tested: `listAbsentStudentIds`, `setAbsent`, composite absence id format.
-- Files: `src/lib/repos/attendance.repo.ts`
-- Risk: Absence key or query regressions break lesson attendance silently.
-- Priority: Medium
+**Repositories without dedicated tests:**
+- What's not tested: `src/lib/repos/students.repo.ts` (CRUD, `replaceStudents`, `appendStudents`), `src/lib/repos/attendance.repo.ts` (`setAbsent`, composite id).
+- Files: `src/lib/repos/students.repo.ts`, `src/lib/repos/attendance.repo.ts`
+- Risk: Cascade deletes and roster replace could regress silently.
+- Priority: High for `replaceStudents` / `deleteStudentCascade`; Medium for attendance.
 
-**No tests for students repository (except via class cascade):**
-- What's not tested: `addStudent`, `updateStudent`, `appendStudents`, `replaceStudents` isolation and ordering.
-- Files: `src/lib/repos/students.repo.ts`
-- Risk: Partial import or cascade bugs on roster replace.
-- Priority: Medium
+**Svelte routes and components:**
+- What's not tested: All `src/routes/**/*.svelte` and `SemesterMap.svelte`; Vitest explicitly excludes `src/**/*.svelte.{test,spec}.*` in `vite.config.ts`.
+- Risk: Form validation, `onblur` save paths, and optimistic attendance UX break without detection.
+- Priority: Medium (add `@testing-library/svelte` or Playwright smoke later).
 
-**No Svelte component or route tests:**
-- What's not tested: Load functions wiring, navigation, semester map rendering, file import UI, toast flows.
-- Files: `src/routes/**`, `src/routes/class/[classId]/SemesterMap.svelte`
-- Risk: UI regressions in contract stats display and import preview only caught manually.
-- Priority: High for critical teacher workflows (import replace, delete class)
+**Browser / E2E:**
+- What's not tested: Full flows (create class → add lesson → mark absence) in a real browser.
+- Risk: IndexedDB behavior differs from `fake-indexeddb` in edge cases.
+- Priority: Low until sync or PWA features ship.
 
-**Vitest excludes Svelte test files:**
-- What's not tested: Any `*.svelte.test.ts` would be excluded by config.
-- Files: `vite.config.ts` (`exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']`)
-- Risk: Component testing strategy not enabled without config change.
-- Priority: Low until component tests are added
+**`updateLesson` missing-id behavior:**
+- What's not tested: Silent return when lesson absent.
+- Files: `src/lib/repos/lessons.repo.ts`, `src/lib/repos/lessons.repo.test.ts`
+- Risk: Callers assume throw or error result.
+- Priority: Medium — assert throw `repoError` or return `false`.
 
-**Limited migration coverage:**
-- What's not tested: Dexie v1→v2→v3 upgrade paths with pre-migration fixture data.
-- Files: `src/lib/db/client.ts`
-- Risk: Existing users upgrading from older builds may hit corrupt or partial defaults.
-- Priority: Medium
+**CSV import edge cases:**
+- What's not tested: Quoted fields with embedded commas, UTF-8 BOM, RFC4180 edge cases.
+- Files: `src/lib/logic/rosterImport.ts` (naive `firstCell` splits on first comma only)
+- Risk: Mis-parsed names from Excel exports.
+- Priority: Low unless users report bad imports.
 
 ---
 

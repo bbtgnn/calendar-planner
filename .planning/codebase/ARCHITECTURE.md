@@ -4,166 +4,180 @@
 
 ## Pattern Overview
 
-**Overall:** Client-only layered SPA (SvelteKit + static adapter)
+**Overall:** Client-only SvelteKit SPA with layered separation — UI routes, SvelteKit load/cache orchestration, repository persistence, and pure domain logic.
 
 **Key Characteristics:**
-- All persistence runs in the browser via IndexedDB (Dexie); there is no backend API or server runtime for data.
-- SvelteKit provides routing, code-splitting, and `load` functions used as a **read/cache boundary** (not SSR).
-- Domain rules live in pure TypeScript modules; UI routes call **repository** functions and **invalidate** scoped load keys after writes.
-- `ssr = false` and `@sveltejs/adapter-static` with SPA fallback — deploy as static files only.
+- All data lives in the browser via Dexie (IndexedDB); no server API or SSR data fetching.
+- Reads flow through SvelteKit `load` functions that call repos; writes flow through `runMutation` → repos → optional `invalidate()` of scoped load keys.
+- Business rules for lessons, semesters, contract hours, and session kinds live in `src/lib/logic/` as testable pure functions; repos enforce write-time policy at persistence boundaries.
 
 ## Layers
 
-**Presentation (routes & UI):**
-- Purpose: Pages, navigation, forms, derived display state, user actions.
-- Location: `src/routes/`
-- Contains: `+page.svelte`, `+layout.svelte`, route-local components (e.g. `SemesterMap.svelte`), thin `+page.ts` / `+layout.ts` loaders.
-- Depends on: `$lib/repos/*`, `$lib/logic/*`, `$lib/db/withRetry`, `$lib/kit/loadKeys`, `$lib/stores/toast`, `$lib/preferences/activeClass`.
-- Used by: End user in the browser.
+**Presentation (routes & local UI components):**
+- Purpose: Pages, forms, navigation, and derived UI state for teachers managing classes.
+- Location: `src/routes/`, colocated `SemesterMap.svelte`
+- Contains: Svelte 5 components (`$props`, `$state`, `$derived`, `$effect`), inline styles, event handlers calling `runMutation`.
+- Depends on: `$lib/kit/*`, `$lib/repos/*`, `$lib/logic/*`, `$lib/stores/toast`, `$lib/preferences/activeClass`
+- Used by: Browser navigation only (static build)
 
-**Application loaders (SvelteKit data boundary):**
-- Purpose: Fetch entities for routes, declare `depends()` keys, return serializable `PageData` / layout data.
-- Location: `src/routes/**/+page.ts`, `src/routes/**/+layout.ts`, root `src/routes/+layout.ts`.
-- Contains: `load` functions that call repos and `error(404)` when entities are missing.
-- Depends on: Repositories, `loadKeys`.
-- Used by: Matching `.svelte` pages via `data` props.
+**Application orchestration (SvelteKit kit helpers):**
+- Purpose: Coordinate load invalidation, mutation retries, and user-facing error messages after writes.
+- Location: `src/lib/kit/`
+- Contains: `loadKeys.ts` (custom `depends`/`invalidate` keys), `runMutation.ts`, `repoErrors.ts`
+- Depends on: `$app/navigation`, `$lib/db/withRetry`, `$lib/stores/toast`
+- Used by: Route layouts/pages and `SemesterMap.svelte`
 
 **Domain logic (pure):**
-- Purpose: Business rules with no I/O — stats, calendar grids, roster parsing, session-kind UI rules, semester validation.
+- Purpose: Calendar grids, semester validation, contract/student hour math, session-kind UI/write rules, roster parsing.
 - Location: `src/lib/logic/`
-- Contains: `stats.ts`, `semesterCalendar.ts`, `sessionKindUi.ts`, `rosterImport.ts` (+ co-located `*.test.ts`).
-- Depends on: `$lib/db/types` only (types/constants).
-- Used by: Repos (e.g. `classes.repo` → `semesterCalendar`), route components, loaders.
+- Contains: Stateless functions and types; no Dexie or Svelte imports (except `sessionKindPolicy` → `repoErrors` for thrown codes).
+- Depends on: `$lib/db/types` for row shapes
+- Used by: Repos (write policy), route components (display/stats), tests
 
 **Data access (repositories):**
-- Purpose: CRUD and transactional cascades over Dexie tables; enforce invariants at write time.
+- Purpose: CRUD and transactional cascades over IndexedDB tables.
 - Location: `src/lib/repos/`
-- Contains: `classes.repo.ts`, `lessons.repo.ts`, `students.repo.ts`, `attendance.repo.ts` (+ repo tests).
-- Depends on: `$lib/db/client`, `$lib/db/types`, selected logic helpers.
-- Used by: Load functions and route `.svelte` mutation handlers.
+- Contains: `classes.repo.ts`, `lessons.repo.ts`, `students.repo.ts`, `attendance.repo.ts`
+- Depends on: `$lib/db/client`, `$lib/logic/*` (validation/policy), `$lib/kit/repoErrors`
+- Used by: `load` functions and UI mutations
 
 **Persistence:**
-- Purpose: Schema, migrations, singleton DB instance, transient IndexedDB retry helper.
+- Purpose: Dexie schema, migrations, typed rows, IndexedDB retry helper.
 - Location: `src/lib/db/`
-- Contains: `client.ts` (`LessonPlannerDB`), `types.ts`, `withRetry.ts`.
-- Depends on: `dexie` package.
-- Used by: All repositories.
+- Contains: `client.ts` (`LessonPlannerDB`), `types.ts`, `withRetry.ts`
+- Depends on: `dexie` only
+- Used by: All repos; tests use `fake-indexeddb` via `src/test/setup.ts`
 
-**Cross-cutting utilities:**
-- Purpose: Cache invalidation contract, UX feedback, session preference.
-- Location: `src/lib/kit/loadKeys.ts`, `src/lib/stores/toast.ts`, `src/lib/preferences/activeClass.ts`.
-- Depends on: SvelteKit navigation (invalidate) or browser APIs only.
-- Used by: Layouts and pages after mutations.
+**Cross-cutting preferences & feedback:**
+- Purpose: Remember last-opened class; surface mutation errors/success.
+- Location: `src/lib/preferences/activeClass.ts`, `src/lib/stores/toast.ts`
+- Depends on: `localStorage` (guarded for SSR), Svelte `writable`
+- Used by: Root/class layouts and `runMutation`
 
 ## Data Flow
 
 **Initial app load:**
 
-1. Browser requests the SPA; SvelteKit hydrates with `ssr = false`.
-2. Root `src/routes/+layout.ts` runs `load` → `listClasses()` → `{ classes }`.
-3. `src/routes/+page.ts` reads parent data; if classes exist, `redirect(303)` to `/class/{id}` using `getLastClassId()` from `localStorage`, else `{ empty: true }`.
-4. Class layout `src/routes/class/[classId]/+layout.ts` loads the class row or 404.
+1. `src/routes/+layout.ts` runs with `ssr = false`; `depends(CLASSES_LIST_LOAD_KEY)` and `listClasses()` populate root layout data.
+2. `src/routes/+page.ts` reads `getLastClassId()` from `localStorage` and `redirect(303, '/class/{id}')` to the remembered or first class.
+3. `src/routes/class/[classId]/+layout.ts` loads class metadata via `getClass()` or `error(404)`.
+4. Nested `+page.ts` files load lessons, students, or lesson detail + absences per route.
 
-**Read path (typical class schedule page):**
+**Read path (display):**
 
-1. `src/routes/class/[classId]/+page.ts` `depends(classLoadKey(classId))`, awaits parent, calls `listLessons(classId)`.
-2. `+page.svelte` receives `data.class` and `data.lessons`; uses `$derived` + `src/lib/logic/stats.ts` for contract statistics.
-3. `SemesterMap.svelte` receives `classRow` and `lessons` props; uses `semesterCalendar` for month grids and markers.
+1. Page/layout `load` calls repo `list*` / `get*` functions against Dexie.
+2. Svelte components receive `data` from `PageData` / layout data types.
+3. Derived stats and calendar cells computed in components via `$lib/logic/stats` and `$lib/logic/semesterCalendar` (not stored separately).
 
-**Write path (typical mutation):**
+**Write path (mutation):**
 
-1. User action in `.svelte` (e.g. toggle lesson done).
-2. Handler wraps repo call in `withRetry(() => ...)` from `src/lib/db/withRetry.ts`.
-3. On success, `invalidate(classLoadKey(id))` or `invalidate(lessonLoadKey(id))` or `invalidate(CLASSES_LIST_LOAD_KEY)` from `src/lib/kit/loadKeys.ts`.
-4. Matching `load` functions re-run; UI `data` props update; local `$state` form fields resync via `$effect` where used.
+1. UI handler calls `runMutation({ fn, invalidate, successToast?, mapError? })`.
+2. `fn` typically wraps a repo method; `withRetry` runs once by default on transient IndexedDB errors.
+3. On success, `invalidate()` runs for one or more `CustomLoadKey` values from `loadKeys.ts`, rerunning only dependent loads (slice invalidation).
+4. Toast shown on success or mapped failure; handler may use `onSuccess` for navigation or local form reset.
 
-**Lesson detail & attendance:**
+**Class-scoped load slices (invalidation granularity):**
 
-1. `src/routes/class/[classId]/lesson/[lessonId]/+page.ts` loads lesson, students, and absent IDs (absences only when `attendanceVisibleForKind` is true for `sessionKind === 'class'`).
-2. Toggles call `setAbsent` in `src/lib/repos/attendance.repo.ts` (composite id `lessonId__studentId`).
-3. Session kind changes go through `updateLesson`, which may delete absences when switching to `skipped` or block `extra` if absences exist.
+| Key helper | Scope | Typical invalidation trigger |
+|------------|--------|------------------------------|
+| `CLASSES_LIST_LOAD_KEY` | All classes | Create/rename/delete class |
+| `classMetaLoadKey(classId)` | Class row (targets, semester) | Update class, semester map |
+| `classLessonsLoadKey(classId)` | Lesson list | Create/update/delete lesson |
+| `classStudentsLoadKey(classId)` | Student roster | Student CRUD, import |
+| `lessonLoadKey(lessonId)` | Single lesson + absences | Lesson edit, attendance toggle |
+| `classScopeLoadKeys(classId)` | All three class slices | Class delete cascade |
 
 **State Management:**
-- **Source of truth for lists/entities:** SvelteKit `load` return values (`data` prop), refreshed via `invalidate` + `depends` keys — not a global entity store.
-- **Ephemeral UI state:** Svelte 5 `$state` / `$derived` in components (form fields, edit mode, import preview).
-- **Cross-session preference:** `localStorage` key `lesson-planner:last-class-id` via `src/lib/preferences/activeClass.ts`.
-- **Transient feedback:** `toastMessage` writable in `src/lib/stores/toast.ts`.
+- **Server-shaped client data:** SvelteKit `load` return values (`classes`, `class`, `lessons`, `students`, `lesson`, `absentIds`) — refetched via `invalidate`, not a global store.
+- **Ephemeral UI:** Component `$state` for forms, edit mode, import preview (`+page.svelte` files).
+- **Optimistic class targets:** `class/[classId]/+page.svelte` keeps `classSnapshot` / target hour fields synced with `$effect` when `data.class` changes.
+- **Toast:** Module-level `writable` in `src/lib/stores/toast.ts`.
+- **Last class:** `localStorage` key `lesson-planner:last-class-id` set in `class/[classId]/+layout.svelte` via `$effect`.
 
 ## Key Abstractions
 
-**Entity rows (Dexie tables):**
-- Purpose: Typed records for classes, students, lessons, absences.
-- Examples: `src/lib/db/types.ts` — `ClassRow`, `StudentRow`, `LessonRow`, `AbsenceRow`, `LessonSessionKind`.
-- Pattern: UUID string primary keys; ISO date strings (`YYYY-MM-DD`); numeric timestamps for `createdAt`.
+**`LessonPlannerDB` (Dexie):**
+- Purpose: Single IndexedDB database `lesson-planner-db` with versioned schema (v1→v3 migrations for `sessionKind`, semester fields, `requiredStudentLessonHours`).
+- Examples: `src/lib/db/client.ts`, row types in `src/lib/db/types.ts`
+- Pattern: One exported `db` singleton; repos never instantiate Dexie directly.
 
-**Repository functions:**
-- Purpose: Single entry point per aggregate for reads/writes.
-- Examples: `listLessons`, `createLesson`, `deleteClassCascade` in `src/lib/repos/`.
-- Pattern: Async functions returning rows or `void`; multi-table deletes use `db.transaction('rw', ...)`.
+**Repository modules:**
+- Purpose: Entity-scoped persistence API; cascade deletes in transactions (`deleteClassCascade`, `deleteLessonCascade`, `deleteStudentCascade`).
+- Examples: `src/lib/repos/classes.repo.ts`, `lessons.repo.ts`, `students.repo.ts`, `attendance.repo.ts`
+- Pattern: Async functions returning rows or `void`; domain validation before `db.*.update`; `lessons.repo` delegates session-kind rules to `sessionKindPolicy`.
 
-**Load invalidation keys:**
-- Purpose: Fine-grained reruns of `load` without full-page reload.
-- Examples: `CLASSES_LIST_LOAD_KEY`, `classLoadKey(classId)`, `lessonLoadKey(lessonId)` in `src/lib/kit/loadKeys.ts`.
-- Pattern: `depends(key)` in loaders; `invalidate(key)` after mutations affecting that data.
+**`CustomLoadKey` + `depends` / `invalidate`:**
+- Purpose: Fine-grained cache keys so student writes do not refetch lessons.
+- Examples: `src/lib/kit/loadKeys.ts`, usage in every `+layout.ts` / `+page.ts` under `src/routes/`
+- Pattern: `` `${namespace}:${segment}` `` strings; always use helpers, never ad-hoc strings.
 
-**Contract statistics:**
-- Purpose: Teacher-hour vs student-hour (50-minute unit) accounting for class/extra/skipped sessions.
-- Examples: `remainingFlexTeacherHours`, `unplannedClassTeacherHours` in `src/lib/logic/stats.ts`.
-- Pattern: Pure functions over `LessonForContractStats[]` and class targets; UI only formats numbers.
+**`runMutation`:**
+- Purpose: Standard write pipeline (retry → invalidate → toast → optional callbacks).
+- Examples: `src/lib/kit/runMutation.ts`, called from `+layout.svelte`, class pages, `SemesterMap.svelte`
+- Pattern: Returns `{ ok: true, value } | { ok: false }`; repos throw `repoError(code)` for mapped messages.
 
-**Session kind semantics:**
-- Purpose: Unified rules for UI labels, editable fields, and attendance visibility.
-- Examples: `attendanceVisibleForKind`, `normalizedHoursForKind` in `src/lib/logic/sessionKindUi.ts`.
-- Pattern: `'class' | 'extra' | 'skipped'` drives repo behavior (e.g. zero hours, absence cleanup).
+**Session kind model:**
+- Purpose: Lessons are `class` | `extra` | `skipped`; drives hours, done flag, attendance visibility, absence clearing.
+- Examples: `LessonSessionKind` in `src/lib/db/types.ts`; policy in `src/lib/logic/sessionKindPolicy.ts`; enforcement in `src/lib/repos/lessons.repo.ts`
+- Pattern: UI rules in `sessionKindPolicy` display helpers; write rules in same module + repo transactions.
+
+**Contract / hour statistics:**
+- Purpose: Teacher hours (60 min) vs student lesson hours (50 min), flex pool, unplanned class hours.
+- Examples: `src/lib/logic/stats.ts`, consumed heavily in `src/routes/class/[classId]/+page.svelte`
+- Pattern: Pure functions on lesson arrays; constants `TEACHER_MINUTES_PER_TEACHER_HOUR`, `STUDENT_MINUTES_PER_STUDENT_HOUR`.
 
 ## Entry Points
 
-**HTML shell:**
-- Location: `src/app.html`
-- Triggers: Initial document load.
-- Responsibilities: Meta, `%sveltekit.head%` / `%sveltekit.body%`, preload `hover`.
+**Vite / SvelteKit app bootstrap:**
+- Location: `src/app.html`, generated `.svelte-kit/` client entry
+- Triggers: `bun run dev` / static `build/` after `adapter-static`
+- Responsibilities: Mount SPA, client-side routing
 
 **Root layout load:**
-- Location: `src/routes/+layout.ts`
-- Triggers: Any navigation (and invalidation of `app:classes`).
-- Responsibilities: `export const ssr = false`, `prerender = false`, load all classes for header switcher.
+- Location: `src/routes/+layout.ts`, `src/routes/+layout.svelte`
+- Triggers: Any navigation
+- Responsibilities: Load all classes; global chrome (class switcher, create/rename/delete class, toast host)
 
 **Home redirect:**
 - Location: `src/routes/+page.ts`
-- Triggers: Visit `/`.
-- Responsibilities: Empty-state data or redirect to last/first class.
+- Triggers: Visit `/`
+- Responsibilities: Empty-state or redirect to `/class/{id}`
 
-**Class-scoped layouts and pages:**
-- Location: `src/routes/class/[classId]/+layout.ts`, `+page.ts`, nested `lesson/` and `students/` loaders.
-- Triggers: `/class/:classId`, `/class/:classId/lesson/:lessonId`, `/class/:classId/students`.
-- Responsibilities: Resolve params, 404 on missing entities, attach lessons/students/absences to `data`.
+**Class workspace:**
+- Location: `src/routes/class/[classId]/+layout.ts`, `+layout.svelte`, `+page.ts`, `+page.svelte`
+- Triggers: `/class/{classId}`
+- Responsibilities: Class meta load; sub-nav Schedule/Students; schedule list, targets, semester map, lesson CRUD
 
-**Database singleton:**
-- Location: `src/lib/db/client.ts` — `export const db = new LessonPlannerDB()`
-- Triggers: First import of client from any repo or test.
-- Responsibilities: Dexie v1–v3 schema and upgrades (session kinds, semester bounds).
+**Students roster:**
+- Location: `src/routes/class/[classId]/students/+page.ts`, `+page.svelte`
+- Triggers: `/class/{classId}/students`
+- Responsibilities: CRUD, CSV/TXT import via `src/lib/logic/rosterImport.ts`
 
-**Production bundle:**
-- Location: `build/` after `bun run build`
-- Triggers: Static hosting with `index.html` fallback (`svelte.config.js` adapter-static).
+**Lesson session editor:**
+- Location: `src/routes/class/[classId]/lesson/[lessonId]/+page.ts`, `+page.svelte`
+- Triggers: `/class/{classId}/lesson/{lessonId}`
+- Responsibilities: Edit lesson fields; toggle absences when `attendanceVisibleForKind` (`class` only)
 
 ## Error Handling
 
-**Strategy:** Fail in repos/loaders with thrown `Error` or SvelteKit `error(404)`; catch at UI boundary, show toast, optionally revert optimistic local state.
+**Strategy:** Throw `Error` with stable `message` codes from repos/domain; map to user copy in `REPO_ERROR_MESSAGES`; catch at `runMutation` boundary for toasts. HTTP-style `error(404)` only in load functions for missing entities.
 
 **Patterns:**
-- Loaders: `throw error(404, '...')` when `getClass` / `getLesson` miss or lesson `classId` mismatches route (`src/routes/class/[classId]/lesson/[lessonId]/+page.ts`).
-- Repos: User-facing messages for semester bounds (`assertValidSemesterBounds`), domain code `SESSION_KIND_EXTRA_BLOCKED_ABSENCES` in `updateLesson` (`src/lib/repos/lessons.repo.ts`).
-- UI: `try/catch` around `withRetry` + repo calls → `showToast('...')` (`src/lib/stores/toast.ts`); lesson kind change rolls back local `$state` on failure (`lesson/[lessonId]/+page.svelte`).
-- IndexedDB: `withRetry` retries once unless error name is `ConstraintError`, `DataError`, or `TypeError` (`src/lib/db/withRetry.ts`).
+- `repoError(RepoErrorCode.*)` from `src/lib/kit/repoErrors.ts` — e.g. extra session blocked when absences exist, class not found.
+- Semester validation throws literal message strings also listed in `REPO_ERROR_MESSAGES` (`assertValidSemesterBounds` in `src/lib/logic/semesterCalendar.ts`).
+- `runMutation` resolves message via `mapError` → `repoErrorMessage` → `errorToast` → `Error.message` → generic fallback.
+- `withRetry` in `src/lib/db/withRetry.ts` skips retry for `ConstraintError`, `DataError`, `TypeError`.
+- Load guards: `getClass` / `getLesson` mismatch → `error(404, ...)` in `+layout.ts` / `lesson/+page.ts`.
 
 ## Cross-Cutting Concerns
 
-**Logging:** No structured logger; errors surfaced via toasts and thrown `Error` messages only.
+**Logging:** No structured logger; failures surface via toast only. Tests use Vitest assertions.
 
-**Validation:** Domain validation in `src/lib/logic/` (semester dates, import parsing); numeric guards in components before repo calls; DB constraints via Dexie schema indexes.
+**Validation:** Semester start/end pairing in `mergeSemesterFields` / `assertValidSemesterBounds`; session-kind transitions in `assertCanChangeSessionKind`; form-level checks in Svelte (e.g. non-negative hours) before `runMutation`.
 
-**Authentication:** Not applicable — single-user local app, no accounts or remote auth.
+**Authentication:** Not applicable — single-user local app; no auth layer.
+
+**Deployment shape:** `@sveltejs/adapter-static` with `fallback: 'index.html'` in `svelte.config.js`; output `build/` as static SPA (`README.md`).
 
 ---
 

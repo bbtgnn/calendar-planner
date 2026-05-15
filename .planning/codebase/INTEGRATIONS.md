@@ -5,93 +5,110 @@
 ## APIs & External Services
 
 **HTTP / REST / GraphQL:**
-- None — No `fetch`, Axios, or third-party API clients in `src/`
+- None in application runtime code under `src/`
+- No `fetch()` calls to third-party URLs in `src/`
 
-**Third-party SDKs:**
-- None in application dependencies (`package.json` lists only `dexie` at runtime)
+**Cloud SDKs:**
+- Not detected in `package.json` dependencies or `src/` imports (no Supabase, Stripe, AWS, Google APIs, OpenAI, etc.)
 
-**Note:** `.cursor/get-shit-done/` tooling may reference optional search APIs (`BRAVE_API_KEY`, `FIRECRAWL_API_KEY`, `EXA_API_KEY`) for GSD workflows; that is separate from the lesson planner app and not used by `src/`.
+**Agent / planning tooling (repository only, not shipped app):**
+- GSD workflow scripts under `.cursor/get-shit-done/` may reference optional search API keys (`BRAVE_API_KEY`, `FIRECRAWL_API_KEY`, `EXA_API_KEY`) in developer tooling — unrelated to the lesson planner UI
+- GitNexus MCP indexing for code intelligence (`AGENTS.md`) — developer workflow, not end-user integration
 
 ## Data Storage
 
 **Databases:**
-- IndexedDB (browser), via Dexie
-  - Client: `dexie` in `src/lib/db/client.ts`
-  - Database name: `lesson-planner-db`
-  - Tables: `classes`, `students`, `lessons`, `absences` (schema versions 1–3 with upgrades in same file)
-  - Types: `src/lib/db/types.ts`
-  - Access layer: repositories in `src/lib/repos/` (`classes.repo.ts`, `students.repo.ts`, `lessons.repo.ts`, `attendance.repo.ts`)
+- IndexedDB (browser), database name `lesson-planner-db`
+  - Client: Dexie 4.4.2 (`src/lib/db/client.ts`)
+  - Tables: `classes`, `students`, `lessons`, `absences` (schema versions 1–3 with upgrades)
+  - Access layer: repositories in `src/lib/repos/classes.repo.ts`, `students.repo.ts`, `lessons.repo.ts`, `attendance.repo.ts`
+  - Retry helper for transient IDB errors: `src/lib/db/withRetry.ts`
+  - No connection string or server-side database
 
 **File Storage:**
-- Local filesystem only at **import time** — User selects `.txt` or `.csv` via `<input type="file">`; content read with `FileReader` in `src/routes/class/[classId]/students/+page.svelte`, parsed by `src/lib/logic/rosterImport.ts`. Files are not uploaded to any server.
+- Local filesystem only via user-initiated file picker (roster import)
+  - Parser logic: `src/lib/logic/rosterImport.ts` (`parseTxtNames`, `parseCsvNames`)
+  - UI: `src/routes/class/[classId]/students/+page.svelte` (`accept=".txt,.csv"`, `FileReader.readAsText`)
+  - Files are read in-browser; contents are not uploaded to any server
+
+**Browser key-value storage:**
+- `localStorage` key `lesson-planner:last-class-id` for UX preference (`src/lib/preferences/activeClass.ts`)
 
 **Caching:**
-- None (no service worker or CDN integration in app code)
-
-**Preferences (non-Dexie):**
-- `localStorage` key `lesson-planner:last-class-id` — Last active class for redirect (`src/lib/preferences/activeClass.ts`, used from `src/routes/+page.ts` and `src/routes/class/[classId]/+layout.svelte`)
+- None beyond browser IndexedDB and SvelteKit client-side `load` cache invalidation (`invalidate` / custom load keys in `src/lib/kit/loadKeys.ts`, `src/lib/kit/runMutation.ts`)
 
 ## Authentication & Identity
 
 **Auth Provider:**
-- None — No login, sessions, JWT, or OAuth
+- None — fully offline, single-user-per-browser assumption
+- No login, sessions, JWT, or OAuth in `src/`
 
-**Identity:**
-- Primary keys generated with `crypto.randomUUID()` in repos (`src/lib/repos/classes.repo.ts`, `students.repo.ts`, `lessons.repo.ts`)
+**Identity for records:**
+- `crypto.randomUUID()` for row ids in repos (see `src/lib/repos/classes.repo.ts`)
 
 ## Monitoring & Observability
 
 **Error Tracking:**
-- None — Errors surfaced to users via toast store (`src/lib/stores/toast.ts`) and `window.confirm` / `window.prompt` in UI
+- None (no Sentry, LogRocket, etc.)
 
 **Logs:**
-- No structured logging framework; no server-side logs (static client app)
+- No structured logging framework in `src/`
+- User-facing errors via toast store `src/lib/stores/toast.ts` and `runMutation` error toasts (`src/lib/kit/runMutation.ts`)
 
 ## CI/CD & Deployment
 
 **Hosting:**
-- Static SPA (`build/` after `bun run build`) — Any static host (README: “Serve as static files”)
-- No `.github/workflows`, Netlify, or Vercel config committed
+- Not configured in-repo (no `.github/workflows`, `netlify.toml`, `vercel.json`, or `wrangler` config)
+- `.gitignore` lists common deploy dirs (`.vercel`, `.netlify`, `.wrangler`) as build/output artifacts only
+- `README.md` documents manual static deploy: build to `build/`, serve as static files with SPA fallback
 
 **CI Pipeline:**
-- Not detected in repository
-
-**Build artifact:**
-- `build/` (gitignored) — Produced by `@sveltejs/adapter-static`
+- None detected in repository
 
 ## Environment Configuration
 
 **Required env vars:**
-- None for the application
+- None for running or building the application (no `src/` usage of `import.meta.env` / `process.env`)
+
+**Optional / future:**
+- `.gitignore` reserves `.env` and `.env.*` for future secrets if backend or analytics are added; no `.env.example` committed
 
 **Secrets location:**
-- Not applicable for app runtime
-- `.gitignore` excludes `.env` and `.env.*` (except optional `.env.example` / `.env.test` patterns); no committed env templates
+- Not applicable for current app scope
 
 ## Webhooks & Callbacks
 
 **Incoming:**
-- None
+- None (no API routes)
 
 **Outgoing:**
 - None
 
-## Browser APIs (in-app “integrations”)
+## Browser & Platform Integrations
 
-These are the only external interfaces the app uses at runtime:
+| Integration | Mechanism | Location |
+|-------------|-----------|----------|
+| IndexedDB | Dexie | `src/lib/db/client.ts` |
+| localStorage | Native API | `src/lib/preferences/activeClass.ts` |
+| File import | `<input type="file">` + FileReader | `src/routes/class/[classId]/students/+page.svelte` |
+| Dialogs | `window.prompt`, `window.confirm` | `src/routes/+layout.svelte`, `src/routes/class/[classId]/+page.svelte`, `src/routes/class/[classId]/students/+page.svelte` |
+| Navigation / cache | SvelteKit `invalidate`, `depends` | `src/lib/kit/runMutation.ts`, route `+page.ts` / `+layout.ts` loaders |
 
-| API | Purpose | Location |
-|-----|---------|----------|
-| IndexedDB | Persistent class/lesson/student/absence data | Dexie `src/lib/db/client.ts` |
-| `localStorage` | Remember last selected class | `src/lib/preferences/activeClass.ts` |
-| `FileReader` | Read roster files client-side | `src/routes/class/[classId]/students/+page.svelte` |
-| `crypto.randomUUID` | Entity IDs | `src/lib/repos/*.ts` |
-| `window.prompt` / `window.confirm` | Class create/rename/delete and destructive actions | `src/routes/+layout.svelte`, student/lesson pages |
+## Test Environment Integrations
 
-## Test Environment Integration
+**IndexedDB in Node tests:**
+- `fake-indexeddb/auto` imported in `src/test/setup.ts` so Vitest can run repo and DB tests without a browser
 
-**IndexedDB in Vitest:**
-- `fake-indexeddb/auto` loaded in `src/test/setup.ts` so repo and DB tests run in Node without a browser
+**Test commands:**
+```bash
+bun run test          # vitest --run (all unit tests)
+bun run test:unit     # vitest (watch-capable)
+```
+
+## Static Assets
+
+**Committed static files:**
+- `static/robots.txt` — Allows all crawlers (relevant only if the built SPA is published to a public URL)
 
 ---
 

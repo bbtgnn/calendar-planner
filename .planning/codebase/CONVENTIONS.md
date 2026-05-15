@@ -5,153 +5,180 @@
 ## Naming Patterns
 
 **Files:**
-- Repositories: `{entity}.repo.ts` in `src/lib/repos/` (e.g. `classes.repo.ts`, `lessons.repo.ts`)
-- Pure logic: `{topic}.ts` in `src/lib/logic/` (e.g. `stats.ts`, `semesterCalendar.ts`)
-- Tests: co-located `{module}.test.ts` beside the module under test
-- SvelteKit routes: `+page.svelte`, `+page.ts`, `+layout.svelte`, `+layout.ts` under `src/routes/`
-- Colocated UI components: PascalCase `.svelte` next to the route that owns them (e.g. `src/routes/class/[classId]/SemesterMap.svelte`)
+- Use **camelCase** for TypeScript modules: `runMutation.ts`, `semesterCalendar.ts`, `sessionKindPolicy.ts`.
+- Suffix **repositories** with `.repo.ts`: `classes.repo.ts`, `lessons.repo.ts`, `students.repo.ts`, `attendance.repo.ts`.
+- Co-locate **tests** as `*.test.ts` beside the module under test: `stats.test.ts` next to `stats.ts`.
+- Svelte routes follow SvelteKit conventions: `+page.svelte`, `+page.ts`, `+layout.svelte`, `+layout.ts` under `src/routes/`.
+- Colocate route-only components next to the route: `src/routes/class/[classId]/SemesterMap.svelte`.
 
 **Functions:**
-- Use `camelCase` for functions and methods
-- Prefix list/get/create/update/delete for repo operations: `listClasses`, `getLesson`, `createClass`, `updateLesson`, `deleteClassCascade`
-- Pure helpers use descriptive verb phrases: `sumScheduledHours`, `assertValidSemesterBounds`, `parseCsvNames`
+- Use **camelCase** for functions and methods: `listClasses`, `runMutation`, `assertValidSemesterBounds`.
+- Prefix **boolean predicates** with `is` / `has` where applicable: `isDateInSemester`, `attendanceVisibleForKind`.
+- Prefix **assertions that throw** with `assert`: `assertCanChangeSessionKind`, `assertValidSemesterBounds`.
+- Use **async** on all repo and mutation entry points; repos return `Promise<T>`.
 
 **Variables:**
-- `camelCase` for locals and parameters
-- `const` by default; `let` only when reassignment is required (Svelte `$state`, loops)
-- Boolean names read as predicates: `attendanceVisibleForKind`, `hoursEditableForKind`
+- Use **camelCase** for locals and parameters: `classId`, `targetHours`, `nextKind`.
+- Use **SCREAMING_SNAKE_CASE** only for true constants: `CLASSES_LIST_LOAD_KEY`, `RepoErrorCode`, `TEACHER_MINUTES_PER_TEACHER_HOUR`.
 
 **Types:**
-- `PascalCase` for types and interfaces: `ClassRow`, `LessonSessionKind`, `ImportNamesResult`
-- Domain ID aliases: `ClassId`, `StudentId`, `LessonId` in `src/lib/db/types.ts`
-- String union literals for enums: `LessonSessionKind = 'class' | 'extra' | 'skipped'`
-- Input shapes inline in function signatures or as small exported types; avoid separate `*Input` types unless reused
+- Use **PascalCase** for types and interfaces: `ClassRow`, `LessonSessionKind`, `RunMutationOptions`.
+- Define shared row shapes and ID aliases in `src/lib/db/types.ts` (`ClassId`, `LessonRow`, etc.).
+- Use `type` aliases for unions and small shapes; use `interface` sparingly (e.g. empty `App` namespace in `src/app.d.ts`).
+- Export policy/helper types from the module that owns them: `LessonFieldPatch` in `src/lib/logic/sessionKindPolicy.ts`, `LessonForContractStats` in `src/lib/logic/stats.ts`.
 
 ## Code Style
 
 **Formatting:**
-- No Prettier or ESLint config in the repo
-- Indentation: tabs in TypeScript and Svelte (match existing files)
-- Single quotes for strings in `.ts` / `<script>` blocks
-- Trailing commas in multi-line objects and imports where already used
+- **Tabs** for indentation (consistent across `src/`).
+- **Single quotes** for strings in TypeScript/Svelte script blocks.
+- **Trailing commas** in multi-line objects/arrays where already used in the file.
+- No Prettier, ESLint, or Biome config in the repo — rely on TypeScript strict mode and Svelte checking.
 
 **Type checking:**
-- Run `bun run check` (`svelte-kit sync` + `svelte-check` with `tsconfig.json`)
-- `strict: true` in `tsconfig.json`; use explicit types on public exports and load functions
-- Prefer `import type { ... }` for type-only imports
+- Run `bun run check` (`svelte-kit sync` + `svelte-check` with `tsconfig.json`).
+- `tsconfig.json` enables `strict: true`, `checkJs: true`, `forceConsistentCasingInFileNames: true`, `sourceMap: true`.
+- Use explicit return types on exported functions in `src/lib/logic/` and `src/lib/kit/` when the signature is part of the public contract.
+
+**Linting:**
+- Not detected (no `.eslintrc`, `eslint.config.*`, or `biome.json`).
+- Treat **`bun run check`** as the required static-analysis gate before merge.
 
 ## Import Organization
 
 **Order:**
-1. Framework / runtime (`vitest`, `dexie`, `@sveltejs/kit`, `$app/*`)
-2. Aliased app modules (`$lib/...`)
-3. Relative value imports (`./classes.repo`)
-4. Relative type imports (`import type { PageData } from './$types'`)
+1. Framework / runtime (`vitest`, `dexie`, `@sveltejs/kit`, `$app/*`, `$lib/*` in app code).
+2. Shared library modules via **`$lib/...`** alias (SvelteKit default for `src/lib/`).
+3. Relative imports (`./stats`, `./client`) for same-feature siblings.
 
 **Path aliases:**
-- `$lib` → `src/lib/` (SvelteKit default)
-- `./$types` in routes for generated `PageData`, `LayoutLoad`, etc.
-- `$app/navigation`, `$app/paths`, `$app/state` for Kit client APIs
+- **`$lib`** → `src/lib/` (e.g. `import { db } from '$lib/db/client'`).
+- **`$app/navigation`**, **`$app/paths`**, **`$app/state`** for SvelteKit client APIs in `.svelte` files.
+- Generated **`./$types`** for load function types in `src/routes/**/+page.ts` and `+layout.ts`.
 
-**Example (repo):**
+**Example (repo layer):**
 
 ```typescript
 import { db } from '$lib/db/client';
+import { RepoErrorCode, repoError } from '$lib/kit/repoErrors';
 import { assertValidSemesterBounds, mergeSemesterFields } from '$lib/logic/semesterCalendar';
 import type { ClassId, ClassRow } from '$lib/db/types';
 ```
 
+**Barrel files:**
+- `src/lib/index.ts` is a placeholder only — **import from concrete modules**, not from `$lib` root.
+
+## Layering and Module Design
+
+**Follow this stack; do not skip layers:**
+
+| Layer | Path | Responsibility |
+|-------|------|----------------|
+| Routes (UI + load) | `src/routes/**` | Svelte UI, `load` with `depends()`, call `runMutation` for writes |
+| Kit | `src/lib/kit/` | Load invalidation keys, `runMutation`, `repoErrors` |
+| Logic | `src/lib/logic/` | Pure domain rules, stats, calendar, import parsers — **no Dexie** |
+| Repos | `src/lib/repos/` | IndexedDB reads/writes, transactions, throw `repoError` |
+| DB | `src/lib/db/` | Dexie schema (`client.ts`), `types.ts`, `withRetry.ts` |
+| Stores | `src/lib/stores/` | UI-only state (e.g. toast) |
+
+**Exports:**
+- Export named functions/types from each module; avoid default exports except Svelte components and `svelte.config.js`.
+- Keep **logic functions pure** — no `window`, `localStorage`, or `db` in `src/lib/logic/`.
+- Keep **repos free of UI** — no toasts or `invalidate()` in `src/lib/repos/`.
+
 ## Error Handling
 
-**Repositories (`src/lib/repos/`):**
-- Throw `new Error('...')` with a short human-readable message for invalid state (e.g. `'Class not found.'`)
-- Throw stable machine-readable codes in the message when the UI must branch: `'SESSION_KIND_EXTRA_BLOCKED_ABSENCES'` in `src/lib/repos/lessons.repo.ts`
-- Delegate validation to pure logic where possible (`assertValidSemesterBounds` in `src/lib/logic/semesterCalendar.ts`) before persisting
-- Use Dexie `transaction('rw', ...)` for multi-table writes; early-return inside transaction if row missing (e.g. `updateLesson` when lesson not found)
+**Repository / domain errors:**
+- Throw `repoError(RepoErrorCode.SOME_CODE)` from `src/lib/kit/repoErrors.ts` so `error.message` is a stable lookup key.
+- Add user-facing copy to `REPO_ERROR_MESSAGES` in the same file (keyed by `Error.message`).
+- For validation that is not a stable code, throw `new Error('Semester start must be on or before semester end.')` and register the exact message in `REPO_ERROR_MESSAGES`.
 
-**UI (`.svelte` routes and layout):**
-- Wrap IndexedDB mutations in `withRetry(() => repoFn(...))` from `src/lib/db/withRetry.ts`
-- `try` / `catch` with empty catch or minimal handling; call `showToast('...')` from `src/lib/stores/toast.ts` for user-visible failures
-- Inspect `e instanceof Error` and `e.message` when a specific repo error needs custom copy (see `changeSessionKind` in `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte`)
-- Use SvelteKit `error(404, '...')` in load functions when resources are missing (`src/routes/class/[classId]/lesson/[lessonId]/+page.ts`)
+**UI mutations:**
+- Wrap persisted writes in **`runMutation`** from `src/lib/kit/runMutation.ts` (uses `withRetry` by default).
+- Pass `invalidate` load key(s), optional `successToast` / `errorToast`, and optional `mapError` override.
+- Check result shape: `MutationResult<T>` is `{ ok: true, value }` | `{ ok: false }` — do not assume success after `await runMutation(...)`.
 
-**Retries:**
-- Default one retry for transient IndexedDB errors via `withRetry(fn, { retries?: number })`
-- Non-retriable Dexie errors (`ConstraintError`, `DataError`, `TypeError`) are not retried (`src/lib/db/withRetry.ts`)
+**Load functions:**
+- Use `throw error(404, '...')` from `@sveltejs/kit` when entities are missing (`src/routes/class/[classId]/+layout.ts`).
+- Call `depends(customLoadKey)` at the start of every `load` that should rerun on invalidation (`src/routes/+layout.ts`, `src/routes/class/[classId]/+page.ts`).
+
+**Client-side validation before mutation:**
+- Validate numeric inputs in the component and call `showToast('...')` directly for purely local mistakes (`src/routes/class/[classId]/+page.svelte` target fields).
+- Do not duplicate repo validation in the UI except for immediate UX feedback.
+
+**IndexedDB retries:**
+- Use `withRetry` from `src/lib/db/withRetry.ts` inside `runMutation` (default) or call explicitly for transient failures.
+- Do not retry `ConstraintError`, `DataError`, or `TypeError` (see `NON_RETRIABLE` in `withRetry.ts`).
 
 ## Logging
 
-**Framework:** No structured logger; avoid `console.log` in application code.
+**Framework:** No logging library — **do not add `console.log` / `warn` / `error`** in `src/` (none present today).
 
-**Patterns:**
-- User-facing failures → `showToast(message)` (auto-clears after 4s)
-- No server-side logging (static SPA, `ssr = false` in `src/routes/+layout.ts`)
+**User feedback:**
+- Use **`showToast`** from `src/lib/stores/toast.ts` for success and error messages surfaced to the user.
+- Subscribe in layout via `$toastMessage` (`src/routes/+layout.svelte`).
 
 ## Comments
 
 **When to comment:**
-- Module-level JSDoc for cross-cutting constants and non-obvious domain rules (e.g. teacher vs student hour conversion in `src/lib/logic/stats.ts`)
-- File-level doc block when defining shared contracts (`src/lib/kit/loadKeys.ts`)
-- Inline comments for schema migrations and upgrade backfills in `src/lib/db/client.ts`
+- File-level or export-level **JSDoc** on kit contracts and non-obvious domain rules (`src/lib/kit/loadKeys.ts`, `src/lib/kit/runMutation.ts`, `src/lib/kit/repoErrors.ts`).
+- Short **section headers** in large policy modules (`// —— Display / form rules ——` in `src/lib/logic/sessionKindPolicy.ts`).
+- Avoid restating what the code already says.
 
 **JSDoc/TSDoc:**
-- Use `/** ... */` on exported constants and public helpers where the name alone is insufficient
-- Do not add JSDoc to every trivial getter or one-line wrapper
+- Use `{@link symbol}` when pointing to related helpers (`repoErrors.ts` → `repoErrorMessage`).
+- Document load-key conventions and invalidation expectations in `loadKeys.ts`.
+
+## Svelte / SvelteKit Conventions
+
+**Svelte 5:**
+- Use **`$props()`** for component inputs: `let { data }: { data: PageData } = $props();`
+- Use **`$state`**, **`$derived`**, **`$derived.by`**, **`$effect`** for local UI state (`src/routes/class/[classId]/+page.svelte`).
+- Use **`onclick`**, **`onchange`** (not `on:click`) on native elements.
+- Use **`{#each items as item (item.id)}`** with a keyed block when lists can reorder.
+
+**SSR / hosting:**
+- Set `export const ssr = false` and `export const prerender = false` on the root layout load (`src/routes/+layout.ts`) — browser-only IndexedDB app.
+- Use `adapter-static` with SPA fallback (`svelte.config.js`).
+
+**Load invalidation:**
+- Define keys in `src/lib/kit/loadKeys.ts` as `` `scope:segment:${id}` `` typed as `CustomLoadKey`.
+- Invalidate the **narrowest** slice possible (`classLessonsLoadKey` vs `classScopeLoadKeys`).
+
+**Svelte-specific suppressions:**
+- When seeding `$state` from `data` props, use `// svelte-ignore state_referenced_locally` with a one-line justification (`src/routes/class/[classId]/+page.svelte`).
 
 ## Function Design
 
-**Size:** Keep repos thin; put calculations and date rules in `src/lib/logic/`. UI event handlers may be longer but should delegate persistence to repos.
+**Size:**
+- Prefer small pure functions in `src/lib/logic/` (stats, calendar, session kind policy).
+- Keep repos focused: one file per aggregate (`classes`, `lessons`, `students`, `attendance`).
 
 **Parameters:**
-- Repos accept `ClassId` / ids and small input objects: `createClass({ name, totalHoursTarget, ... })`
-- Patches use `Partial<Pick<Row, 'field' | ...>>` for updates
+- Pass **IDs** (`ClassId`, `LessonId`) rather than full rows when only identity is needed.
+- Use a single **`patch` object** for partial updates: `updateClass(id, patch)`, `updateLesson(id, patch)`.
 
 **Return values:**
-- Async repos return `Promise<Row>` for creates, `Promise<Row[]>` for lists, `Promise<void>` for updates/deletes
-- Pure functions return primitives or plain objects; no throwing for expected validation in UI—use `assertValidSemesterBounds` which throws only when bounds are invalid
+- Repos **return created rows** from `create*` functions; `update*` / `delete*` return `Promise<void>`.
+- Logic helpers return primitives, booleans, or plain objects — never Promises unless async I/O is required.
 
-## Module Design
+## Dates and IDs
 
-**Exports:** Named exports only; no default exports in `src/lib/`
+**Dates:**
+- Store lesson and semester dates as **`YYYY-MM-DD` strings** (ISO calendar dates), not `Date` objects in Dexie rows.
+- Compare with `localeCompare` or helpers in `src/lib/logic/semesterCalendar.ts` (`compareIsoDate`).
 
-**Barrel files:** Avoid aggregating barrels. `src/lib/index.ts` is a placeholder comment only—import from concrete paths (`$lib/repos/classes.repo`, `$lib/logic/stats`)
+**IDs:**
+- Generate with **`crypto.randomUUID()`** for new rows.
+- Compose deterministic absence IDs as `` `${lessonId}__${studentId}` `` (`src/lib/repos/attendance.repo.ts`).
 
-**Layering:**
-- `src/lib/db/` — Dexie client, types, retry helper
-- `src/lib/repos/` — persistence API (only layer that imports `db` directly for CRUD)
-- `src/lib/logic/` — pure functions; may import types from `$lib/db/types`, not `db`
-- `src/lib/stores/` — client UI state (`toast`)
-- `src/lib/preferences/` — `localStorage` helpers
-- `src/lib/kit/` — SvelteKit load invalidation keys
-- `src/routes/` — loads fetch via repos; components call repos + `invalidate(loadKey)`
+## Preferences and browser APIs
 
-## Svelte 5 Conventions
+**localStorage:**
+- Access only through helpers in `src/lib/preferences/activeClass.ts` with `typeof localStorage === 'undefined'` guards for SSR safety.
 
-**Runes (use consistently):**
-- Props: `let { data }: { data: PageData } = $props();`
-- Local UI state: `$state(initial)`
-- Derived values: `$derived(expression)`
-- Side effects syncing props → local state: `$effect(() => { ... })`
-- List keys: `{#each items as item (item.id)}`
-
-**Events:** Use `onclick`, `onchange`, etc. (not legacy `on:click`)
-
-**Styles:** Component-scoped `<style>` blocks; shared layout chrome in `src/routes/+layout.svelte`
-
-**Load invalidation:** Define keys in `src/lib/kit/loadKeys.ts`; call `depends(key)` in `+page.ts` / `+layout.ts` and `invalidate(key)` after mutations
-
-## TypeScript Conventions
-
-- Export row shapes from `src/lib/db/types.ts`; repos and components import from there
-- Use `satisfies` for literal load keys: `export const CLASSES_LIST_LOAD_KEY = 'app:classes' satisfies CustomLoadKey`
-- Guard browser-only APIs: `typeof localStorage === 'undefined'` in `src/lib/preferences/activeClass.ts`
-- Dates in persistence: ISO `YYYY-MM-DD` strings, not `Date` objects in Dexie rows
-
-## IDs and Keys
-
-- Primary keys: `crypto.randomUUID()` at create time
-- Composite absence id: `` `${lessonId}__${studentId}` `` in `src/lib/repos/attendance.repo.ts`
-- `localStorage` keys: prefixed constant `lesson-planner:last-class-id` in preferences module
+**Prompts:**
+- `window.prompt` / `window.confirm` are acceptable for simple class CRUD in `src/routes/+layout.svelte` — match existing UX when adding similar flows.
 
 ---
 

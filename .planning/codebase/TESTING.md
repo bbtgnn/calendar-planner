@@ -5,25 +5,27 @@
 ## Test Framework
 
 **Runner:**
-- Vitest `^4.1.3` (see `package.json`)
-- Config: `vite.config.ts` (Vitest `projects` nested under `test`)
+- **Vitest** `^4.1.3` (via `package.json` devDependencies)
+- Config: `vite.config.ts` (merged with SvelteKit via `@sveltejs/kit/vite`)
 
 **Assertion library:**
-- Vitest built-in `expect` (Jest-compatible API)
-- `expect: { requireAssertions: true }` — every test must contain at least one assertion
+- Vitest built-in **`expect`** (Chai-compatible API)
 
 **Environment:**
-- Project name `server`, `environment: 'node'`
-- Setup: `src/test/setup.ts` imports `fake-indexeddb/auto` so Dexie works in Node
+- **Node** test project named `server` (`environment: 'node'` in `vite.config.ts`)
+- Global setup: `src/test/setup.ts` imports `fake-indexeddb/auto` so Dexie works in Node
+
+**Vitest options:**
+- `expect: { requireAssertions: true }` — every `it` must contain at least one `expect` (or `expect.assertions(n)`)
 
 **Run commands:**
 
 ```bash
 bun run test              # vitest --run (CI-style, single pass)
-bun run test:unit         # vitest (watch mode)
+bun run test:unit         # vitest watch mode (no --run)
 ```
 
-**Typecheck (not unit tests):**
+**Typecheck (not unit tests, but required gate):**
 
 ```bash
 bun run check             # svelte-check + TypeScript
@@ -32,12 +34,12 @@ bun run check             # svelte-check + TypeScript
 ## Test File Organization
 
 **Location:**
-- Co-located beside source: `src/lib/**/*.test.ts`
-- No separate `tests/` or `__tests__/` tree
+- **Co-located** with source under `src/lib/**` — not a separate `tests/` tree.
+- Shared setup only in `src/test/setup.ts`.
 
 **Naming:**
-- `*.test.ts` only (no `*.spec.ts` in repo)
-- Smoke test naming: `client.smoke.test.ts` for minimal DB sanity check
+- `*.test.ts` (e.g. `stats.test.ts`, `classes.repo.test.ts`).
+- `*.spec.ts` is supported by config but **not used** in the repo today.
 
 **Structure:**
 
@@ -46,184 +48,223 @@ src/
 ├── test/
 │   └── setup.ts                 # fake-indexeddb bootstrap
 ├── lib/
-│   ├── db/
-│   │   ├── client.ts
-│   │   ├── client.smoke.test.ts
-│   │   └── withRetry.test.ts
 │   ├── logic/
 │   │   ├── stats.ts
-│   │   ├── stats.test.ts
-│   │   └── …
-│   └── repos/
-│       ├── classes.repo.ts
-│       ├── classes.repo.test.ts
-│       └── …
+│   │   └── stats.test.ts
+│   ├── repos/
+│   │   ├── classes.repo.ts
+│   │   └── classes.repo.test.ts
+│   ├── kit/
+│   │   ├── runMutation.ts
+│   │   └── runMutation.test.ts
+│   └── db/
+│       ├── client.ts
+│       └── client.smoke.test.ts
 ```
 
-**Excluded from Vitest include glob:**
-- `src/**/*.svelte.{test,spec}.{js,ts}` — no Svelte component tests configured
+**Svelte components:**
+- Config **excludes** `src/**/*.svelte.{test,spec}.{js,ts}` — no component tests exist yet.
+- Add component tests later in a separate Vitest project if needed; follow the exclude pattern in `vite.config.ts`.
 
 ## Test Structure
 
 **Suite organization:**
 
 ```typescript
-import { describe, expect, it } from 'vitest';
-import { parseCsvNames, parseTxtNames } from './rosterImport';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-describe('rosterImport', () => {
-	it('parseTxtNames trims and drops empties', () => {
-		const r = parseTxtNames('  a \n\nb\r\nc');
-		expect(r.names).toEqual(['a', 'b', 'c']);
-		expect(r.skipped).toBe(0);
+describe('featureName', () => {
+	beforeEach(async () => {
+		// optional setup
+	});
+
+	it('does one behavior', () => {
+		expect(result).toBe(expected);
 	});
 });
 ```
 
-**Patterns:**
-- One top-level `describe` per module under test (matches file name: `describe('stats', ...)`, `describe('classes.repo', ...)`)
-- Test titles are full sentences describing behavior: `'updateLesson throws when switching class to extra if absences exist'`
-- Prefer table-style inputs inline in the test body; no shared fixture files
-- No `afterEach` / global teardown beyond repo tests’ `beforeEach`
+**Patterns observed:**
+- **Top-level `describe`** per module or concern (`describe('stats')`, `describe('classes.repo')`).
+- **Nested `describe`** for grouping (`sessionKindPolicy.test.ts`: `display` vs `write`).
+- **One logical behavior per `it`**; name reads as a specification: `'rejects start after end'`.
+- **Arrange–act–assert** inline; no shared custom test harness beyond `beforeEach`.
 
-**IndexedDB integration tests:**
+**Async testing:**
 
 ```typescript
-import { beforeEach, describe, expect, it } from 'vitest';
+it('deleteClassCascade removes students lessons absences', async () => {
+	const c = await createClass({ name: 'A', totalHoursTarget: 10 });
+	// ...
+	await deleteClassCascade(c.id);
+	expect(await db.classes.count()).toBe(0);
+});
+```
+
+**Error testing:**
+
+```typescript
+await expect(updateClass(c.id, { semesterStart: '2026-05-01' })).rejects.toThrow(/both/);
+
+expect(() => assertCanChangeSessionKind('class', 'extra', 1)).toThrow(
+	RepoErrorCode.SESSION_KIND_EXTRA_BLOCKED_ABSENCES
+);
+```
+
+## Mocking
+
+**Framework:** Vitest `vi` (`vi.fn`, `vi.mock`, `vi.hoisted`)
+
+**Patterns (SvelteKit / side effects):**
+
+Use `vi.hoisted` so mock fns exist before `vi.mock` factory runs (`src/lib/kit/runMutation.test.ts`):
+
+```typescript
+const { invalidate, showToast, withRetry } = vi.hoisted(() => ({
+	invalidate: vi.fn(),
+	showToast: vi.fn(),
+	withRetry: vi.fn(async <T>(fn: () => Promise<T>) => fn())
+}));
+
+vi.mock('$app/navigation', () => ({ invalidate }));
+vi.mock('$lib/stores/toast', () => ({ showToast }));
+vi.mock('$lib/db/withRetry', () => ({ withRetry }));
+
+import { runMutation } from './runMutation';
+```
+
+Reset mocks in `beforeEach`:
+
+```typescript
+beforeEach(() => {
+	invalidate.mockReset();
+	showToast.mockReset();
+	withRetry.mockImplementation(async <T>(fn: () => Promise<T>) => fn());
+});
+```
+
+**Spy on callbacks:**
+
+```typescript
+const onSuccess = vi.fn();
+await runMutation({ fn: async () => 'ok', onSuccess, /* ... */ });
+expect(onSuccess).toHaveBeenCalledWith('ok');
+```
+
+**What to mock:**
+- `$app/navigation` `invalidate`
+- `$lib/stores/toast` `showToast`
+- `$lib/db/withRetry` when testing mutation orchestration without retry noise
+- **Do not mock Dexie** in repo integration tests — use real `db` with `fake-indexeddb`
+
+**What NOT to mock:**
+- Pure logic in `src/lib/logic/` (`stats`, `semesterCalendar`, `sessionKindPolicy`, `rosterImport`)
+- Dexie schema and repo CRUD when testing repository contracts
+- `repoError` / `repoErrorMessage` registry (test real mapping in `repoErrors.test.ts`)
+
+## Fixtures and Factories
+
+**Test data:**
+- Create rows through **repo APIs** (`createClass`, `createLesson`) or direct `db.*.add` / `db.*.put` when setting up edge cases.
+- Use **`crypto.randomUUID()`** for IDs in tests (same as production).
+- Use fixed ISO date strings (`'2026-04-01'`) for deterministic calendar tests.
+
+**DB reset (integration tests):**
+
+```typescript
 import { db } from '$lib/db/client';
-import { createClass, deleteClassCascade, updateClass } from './classes.repo';
 
 beforeEach(async () => {
 	await db.delete();
 	await db.open();
 });
-
-describe('classes.repo', () => {
-	it('deleteClassCascade removes students lessons absences', async () => {
-		// arrange via createClass / direct db.*.add
-		// act
-		// assert with expect(await db.*.count())
-	});
-});
 ```
 
-Use the same `beforeEach` pattern in `src/lib/repos/classes.repo.test.ts` and `src/lib/repos/lessons.repo.test.ts`.
+Used in `src/lib/repos/classes.repo.test.ts` and `src/lib/repos/lessons.repo.test.ts`.
 
-## Mocking
-
-**Framework:** Vitest `vi` (minimal use)
-
-**Patterns:**
-
-```typescript
-import { describe, expect, it, vi } from 'vitest';
-import { withRetry } from './withRetry';
-
-it('retries once then succeeds', async () => {
-	const fn = vi.fn(async () => {
-		// throw once, then return
-	});
-	await expect(withRetry(fn, { retries: 1 })).resolves.toBe(42);
-	expect(fn).toHaveBeenCalledTimes(2);
-});
-```
-
-**What to mock:**
-- Only isolate units without a real DB: `vi.fn` for callback retry behavior in `src/lib/db/withRetry.test.ts`
-- Do not mock Dexie in repo tests — use real `db` with `fake-indexeddb`
-
-**What NOT to mock:**
-- `src/lib/logic/*` pure functions — test directly with literals
-- Repository methods under test — exercise real `classes.repo` / `lessons.repo` against indexed DB
-- `$app/navigation`, Svelte components, or load functions — not covered by current suite
-
-## Fixtures and Factories
-
-**Test data:**
-- Inline object literals and `createClass` / `createLesson` helpers from repos
-- IDs via `crypto.randomUUID()` inside tests
-- Dates as fixed ISO strings: `'2026-04-01'`, `'2026-05-01'`
-
-**Location:**
-- No `fixtures/` directory; no factory modules
+**No shared fixture module** — inline minimal rows in each test for clarity.
 
 ## Coverage
 
-**Requirements:** None enforced (no `@vitest/coverage-v8` script, no CI coverage gate)
+**Requirements:** None enforced in repo (no coverage thresholds in `vite.config.ts` or CI config detected).
 
-**View coverage:** Not configured. To add later, install coverage provider and extend `vite.config.ts` `test` block.
+**View coverage:** Not configured. To add later, extend Vitest with `coverage` provider in `vite.config.ts` and document the command here.
 
 ## Test Types
 
 **Unit tests (pure logic):**
-- `src/lib/logic/stats.test.ts` — hour/stat helpers
-- `src/lib/logic/semesterCalendar.test.ts` — date grid and semester validation
-- `src/lib/logic/sessionKindUi.test.ts` — session kind UI rules
-- `src/lib/logic/rosterImport.test.ts` — CSV/TXT parsing
-- No DB, no `beforeEach`, fast deterministic assertions
+- **Scope:** `src/lib/logic/*` — no database, no mocks.
+- **Examples:** `src/lib/logic/stats.test.ts`, `src/lib/logic/semesterCalendar.test.ts`, `src/lib/logic/rosterImport.test.ts`, `src/lib/logic/sessionKindPolicy.test.ts`.
+- **Approach:** Table-driven inputs, `expect` on return values and thrown errors.
+
+**Unit tests (small infrastructure):**
+- **Scope:** `src/lib/db/withRetry.test.ts`, `src/lib/kit/repoErrors.test.ts`.
+- **Approach:** `vi.fn` for retry behavior; direct calls for error registry.
 
 **Integration tests (repos + Dexie):**
-- `src/lib/repos/classes.repo.test.ts` — cascade delete, semester update validation
-- `src/lib/repos/lessons.repo.test.ts` — session kind transitions, skipped hours, absence clearing
-- Reset DB each test with `db.delete()` / `db.open()`
+- **Scope:** `src/lib/repos/*.repo.test.ts` — real IndexedDB via `fake-indexeddb`.
+- **Approach:** Reset DB each test; assert counts and row shapes after cascade deletes and transactions.
 
 **Smoke tests:**
-- `src/lib/db/client.smoke.test.ts` — single write/read/delete on `classes` table
+- **Scope:** `src/lib/db/client.smoke.test.ts` — verifies DB open + single table write/read/delete.
+- **Use when:** Changing Dexie schema versions in `src/lib/db/client.ts`.
 
-**E2E tests:** Not used (no Playwright/Cypress in `package.json`)
+**Kit / orchestration tests:**
+- **Scope:** `src/lib/kit/runMutation.test.ts` — mocks navigation, toast, retry; asserts invalidation and toast precedence (`mapError` > `repoErrorMessage` > `errorToast` > `Error.message`).
 
-**Svelte / route tests:** Not used — UI and `+page.ts` loads are untested by automation
+**E2E tests:**
+- **Not used** (no Playwright/Cypress config or `e2e/` directory).
+
+**Svelte / route tests:**
+- **Not used** — UI and `load` functions are exercised manually and via `bun run check`.
+
+## Test Inventory (current)
+
+| File | Kind | Focus |
+|------|------|--------|
+| `src/lib/logic/stats.test.ts` | Unit | Contract hour math, class vs extra vs skipped |
+| `src/lib/logic/semesterCalendar.test.ts` | Unit | ISO dates, grids, semester merge/validation |
+| `src/lib/logic/sessionKindPolicy.test.ts` | Unit | Session kind UI rules and write guards |
+| `src/lib/logic/rosterImport.test.ts` | Unit | CSV/TXT name parsing |
+| `src/lib/kit/repoErrors.test.ts` | Unit | Error code → user message map |
+| `src/lib/kit/runMutation.test.ts` | Unit (mocked) | Invalidation, toasts, error resolution |
+| `src/lib/db/withRetry.test.ts` | Unit | Retry count and non-retriable errors |
+| `src/lib/db/client.smoke.test.ts` | Smoke | Dexie open/write |
+| `src/lib/repos/classes.repo.test.ts` | Integration | Cascade delete, semester validation |
+| `src/lib/repos/lessons.repo.test.ts` | Integration | Session kind transitions, absence clearing |
 
 ## Common Patterns
 
-**Async testing:**
+**Testing repo error codes:**
+- Assert thrown `Error.message` equals the code string (e.g. `'SESSION_KIND_EXTRA_BLOCKED_ABSENCES'`) or use `RepoErrorCode` in `toThrow()`.
+- Assert user-facing copy via `repoErrorMessage` in `repoErrors.test.ts`, not duplicated strings in every repo test.
 
-```typescript
-it('updateClass rejects semester with only start set', async () => {
-	const c = await createClass({ name: 'S', totalHoursTarget: 1 });
-	await expect(updateClass(c.id, { semesterStart: '2026-04-01' })).rejects.toThrow(/both/);
-});
-```
+**Testing policy before repo:**
+- `sessionKindPolicy.test.ts` covers rules in isolation; `lessons.repo.test.ts` proves the same rules at persistence boundary.
 
-**Error testing:**
-- `await expect(promise).rejects.toThrow(/regex/)` for validation messages
-- `expect(() => fn()).toThrow(/both/)` for synchronous asserts (`assertValidSemesterBounds`)
-- Stable error substring checks for domain codes: `/SESSION_KIND_EXTRA_BLOCKED_ABSENCES/` when testing repo throws
+**Package manager:**
+- Use **`bun run test`** to match README and CI expectations (`README.md`).
 
-**Equality:**
-- `toEqual` for arrays and objects
-- `toBe` for primitives and referential identity
-- `toHaveLength` for fixed-size grids (e.g. 42 calendar cells in `semesterCalendar.test.ts`)
+## Where to Add New Tests
 
-## Gaps (where to add tests)
+| Change location | Add test in |
+|-----------------|-------------|
+| New pure function in `src/lib/logic/` | Co-located `*.test.ts` beside module |
+| New repo method | Co-located `src/lib/repos/<name>.repo.test.ts` |
+| New `runMutation` behavior | `src/lib/kit/runMutation.test.ts` |
+| Dexie schema version | Extend `client.smoke.test.ts` + relevant repo tests |
+| New Svelte UI behavior | No harness yet — add Vitest browser/svelte project or manual UAT until configured |
 
-| Area | Status | Suggested approach |
-|------|--------|-------------------|
-| `src/lib/repos/students.repo.ts` | No tests | `beforeEach` DB reset; test `replaceStudents` clears absences |
-| `src/lib/repos/attendance.repo.ts` | No tests | put/delete absence rows; `listAbsentStudentIds` |
-| `src/routes/**/+page.ts` loads | No tests | Optional: extract load logic or test with Kit utilities |
-| `.svelte` components | Excluded | Add `environment: 'jsdom'` project + `@testing-library/svelte` if needed |
-| `withRetry` + real Dexie errors | Partial | Only `vi.fn` unit tests today |
+**Do not add tests under `.cursor/`, `docs/`, or `.planning/`** — production code in `src/` only.
 
-## Adding New Tests
+## Gaps and priorities
 
-**New pure helper in `src/lib/logic/`:**
-1. Create `src/lib/logic/{name}.test.ts` next to `{name}.ts`
-2. Import `describe`, `expect`, `it` from `vitest`
-3. Cover edge cases and error paths with regex `rejects.toThrow` / `toThrow` where applicable
-
-**New repo in `src/lib/repos/`:**
-1. Create `src/lib/repos/{name}.repo.test.ts`
-2. Add shared `beforeEach` that runs `await db.delete(); await db.open();`
-3. Use repo public API for arrange/act; assert via `db.*.get/count` or return values
-4. For multi-table invariants, assert all affected tables after cascade operations
-
-**Run before commit:**
-
-```bash
-bun run test
-bun run check
-```
+| Gap | Risk | Suggested test |
+|-----|------|----------------|
+| No tests for `students.repo.ts`, `attendance.repo.ts` | Regressions in roster/absence CRUD | Mirror `classes.repo.test.ts` patterns |
+| No route/`load` tests | Wrong `depends()` keys | Light tests with mocked `parent()` or E2E later |
+| No `.svelte` tests | UI regressions on class/lesson pages | Vitest component project when needed |
+| No coverage reporting | Unknown blind spots | Optional `vitest --coverage` in CI |
 
 ---
 
