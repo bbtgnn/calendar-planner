@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { invalidate } from '$app/navigation';
 	import type { PageData } from './$types';
 	import { lessonLoadKey } from '$lib/kit/loadKeys';
+	import { invalidateLoadKeys, runMutation } from '$lib/kit/runMutation';
 	import { updateLesson } from '$lib/repos/lessons.repo';
 	import {
 		attendanceVisibleForKind,
@@ -11,7 +11,6 @@
 		normalizedHoursForKind
 	} from '$lib/logic/sessionKindUi';
 	import { setAbsent } from '$lib/repos/attendance.repo';
-	import { withRetry } from '$lib/db/withRetry';
 	import { showToast } from '$lib/stores/toast';
 	import type { LessonSessionKind } from '$lib/db/types';
 
@@ -46,9 +45,7 @@
 		absent = new Set(data.absentIds);
 	});
 
-	async function revalidateLesson() {
-		await invalidate(lessonLoadKey(data.lesson.id));
-	}
+	const lessonKey = $derived(lessonLoadKey(data.lesson.id));
 
 	async function persistLessonMeta() {
 		const h = Number(durationHours);
@@ -56,19 +53,17 @@
 			showToast('Enter a valid non-negative number of hours.');
 			return;
 		}
-		try {
-			await withRetry(() =>
+		await runMutation({
+			fn: () =>
 				updateLesson(data.lesson.id, {
 					date,
 					durationHours: normalizedHoursForKind(sessionKind, h),
 					title,
 					done: doneEditableForKind(sessionKind) ? done : false,
 					sessionKind
-				})
-			);
-		} catch {
-			showToast('Could not save lesson.');
-		}
+				}),
+			errorToast: 'Could not save lesson.'
+		});
 	}
 
 	async function changeSessionKind(next: LessonSessionKind) {
@@ -80,26 +75,27 @@
 		sessionKind = next;
 		durationHours = nextHours;
 		done = nextDone;
-		try {
-			await withRetry(() =>
+		await runMutation({
+			fn: () =>
 				updateLesson(data.lesson.id, {
 					sessionKind: next,
 					durationHours: nextHours,
 					done: nextDone
-				})
-			);
-			await revalidateLesson();
-		} catch (e) {
-			sessionKind = prev;
-			durationHours = prevDurationHours;
-			done = prevDone;
-			const msg = e instanceof Error ? e.message : String(e);
-			if (msg.includes('SESSION_KIND_EXTRA_BLOCKED_ABSENCES')) {
-				showToast('Clear all absences for this session before marking it as Extra.');
-			} else {
-				showToast('Could not update session kind.');
+				}),
+			invalidate: lessonKey,
+			errorToast: 'Could not update session kind.',
+			mapError: (e) => {
+				const msg = e instanceof Error ? e.message : String(e);
+				if (msg.includes('SESSION_KIND_EXTRA_BLOCKED_ABSENCES')) {
+					return 'Clear all absences for this session before marking it as Extra.';
+				}
+			},
+			onError: () => {
+				sessionKind = prev;
+				durationHours = prevDurationHours;
+				done = prevDone;
 			}
-		}
+		});
 	}
 
 	async function toggleAbsent(studentId: string, isAbsent: boolean) {
@@ -107,12 +103,13 @@
 		if (isAbsent) next.add(studentId);
 		else next.delete(studentId);
 		absent = next;
-		try {
-			await withRetry(() => setAbsent(data.lesson.id, studentId, isAbsent));
-		} catch {
-			showToast('Could not save attendance.');
-			await revalidateLesson();
-		}
+		await runMutation({
+			fn: () => setAbsent(data.lesson.id, studentId, isAbsent),
+			errorToast: 'Could not save attendance.',
+			onError: async () => {
+				await invalidateLoadKeys(lessonKey);
+			}
+		});
 	}
 </script>
 

@@ -1,11 +1,10 @@
 <script lang="ts">
-	import { invalidate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import type { PageData } from './$types';
 	import { classLoadKey } from '$lib/kit/loadKeys';
+	import { invalidateClass, runMutation } from '$lib/kit/runMutation';
 	import { createLesson, updateLesson, deleteLessonCascade } from '$lib/repos/lessons.repo';
 	import { updateClass } from '$lib/repos/classes.repo';
-	import { withRetry } from '$lib/db/withRetry';
 	import { showToast } from '$lib/stores/toast';
 	import {
 		doneEditableForKind,
@@ -94,9 +93,7 @@
 		return Math.round((doneLessonCount(data.lessons) / s) * 100);
 	});
 
-	async function revalidateClass() {
-		await invalidate(classLoadKey(data.class.id));
-	}
+	const classKey = $derived(classLoadKey(data.class.id));
 
 	async function saveTargets() {
 		const t = Number(targetHours);
@@ -109,18 +106,16 @@
 			showToast('Enter a valid non-negative student lesson hours target.');
 			return;
 		}
-		try {
-			await withRetry(() =>
+		await runMutation({
+			fn: () =>
 				updateClass(data.class.id, {
 					totalHoursTarget: t,
 					requiredStudentLessonHours: m
-				})
-			);
-			showToast('Saved targets.');
-			await revalidateClass();
-		} catch {
-			showToast('Could not save targets.');
-		}
+				}),
+			invalidate: classKey,
+			successToast: 'Saved targets.',
+			errorToast: 'Could not save targets.'
+		});
 	}
 
 	async function addLesson() {
@@ -133,24 +128,24 @@
 			showToast('Enter a valid non-negative number of hours.');
 			return;
 		}
-		try {
-			await withRetry(() =>
+		await runMutation({
+			fn: () =>
 				createLesson({
 					classId: data.class.id,
 					date: newDate,
 					durationHours: h,
 					title: newTitle,
 					sessionKind: newSessionKind
-				})
-			);
-			newDate = '';
-			newHours = 2;
-			newTitle = 'Lesson';
-			newSessionKind = 'class';
-			await revalidateClass();
-		} catch {
-			showToast('Could not add lesson.');
-		}
+				}),
+			invalidate: classKey,
+			errorToast: 'Could not add lesson.',
+			onSuccess: () => {
+				newDate = '';
+				newHours = 2;
+				newTitle = 'Lesson';
+				newSessionKind = 'class';
+			}
+		});
 	}
 
 	function handleNewSessionKindChange(event: Event) {
@@ -168,22 +163,20 @@
 	}
 
 	async function toggleDone(lesson: LessonRow, done: boolean) {
-		try {
-			await withRetry(() => updateLesson(lesson.id, { done }));
-			await revalidateClass();
-		} catch {
-			showToast('Could not update lesson.');
-		}
+		await runMutation({
+			fn: () => updateLesson(lesson.id, { done }),
+			invalidate: classKey,
+			errorToast: 'Could not update lesson.'
+		});
 	}
 
 	async function removeLesson(id: string) {
 		if (!window.confirm('Delete this lesson and its attendance?')) return;
-		try {
-			await withRetry(() => deleteLessonCascade(id));
-			await revalidateClass();
-		} catch {
-			showToast('Could not delete lesson.');
-		}
+		await runMutation({
+			fn: () => deleteLessonCascade(id),
+			invalidate: classKey,
+			errorToast: 'Could not delete lesson.'
+		});
 	}
 </script>
 
@@ -247,7 +240,7 @@
 	lessons={data.lessons}
 	onSemesterSaved={async (c) => {
 		classSnapshot = c;
-		await revalidateClass();
+		await invalidateClass(data.class.id);
 	}}
 />
 

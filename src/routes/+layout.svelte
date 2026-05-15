@@ -1,12 +1,11 @@
 <script lang="ts">
 	import favicon from '$lib/assets/favicon.svg';
-	import { goto, invalidate } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { CLASSES_LIST_LOAD_KEY } from '$lib/kit/loadKeys';
+	import { runMutation } from '$lib/kit/runMutation';
 	import { toastMessage } from '$lib/stores/toast';
 	import { createClass, deleteClassCascade, updateClass } from '$lib/repos/classes.repo';
-	import { withRetry } from '$lib/db/withRetry';
-	import { showToast } from '$lib/stores/toast';
 	import { clearLastClassId } from '$lib/preferences/activeClass';
 
 	let { data, children } = $props();
@@ -20,15 +19,14 @@
 	async function onNewClass() {
 		const name = window.prompt('Class name?');
 		if (!name?.trim()) return;
-		try {
-			const c = await withRetry(() =>
-				createClass({ name: name.trim(), totalHoursTarget: 40 })
-			);
-			await invalidate(CLASSES_LIST_LOAD_KEY);
-			await goto(`/class/${c.id}`);
-		} catch {
-			showToast('Could not create class.');
-		}
+		await runMutation({
+			fn: () => createClass({ name: name.trim(), totalHoursTarget: 40 }),
+			invalidate: CLASSES_LIST_LOAD_KEY,
+			errorToast: 'Could not create class.',
+			onSuccess: async (c) => {
+				await goto(`/class/${c.id}`);
+			}
+		});
 	}
 
 	async function onRenameClass() {
@@ -37,25 +35,25 @@
 		const name = window.prompt('Rename class', current);
 		const trimmed = name?.trim() ?? '';
 		if (!trimmed || trimmed === current.trim()) return;
-		try {
-			await withRetry(() => updateClass(routeClassId, { name: trimmed }));
-			await invalidate(CLASSES_LIST_LOAD_KEY);
-		} catch {
-			showToast('Could not rename class.');
-		}
+		await runMutation({
+			fn: () => updateClass(routeClassId, { name: trimmed }),
+			invalidate: CLASSES_LIST_LOAD_KEY,
+			errorToast: 'Could not rename class.'
+		});
 	}
 
 	async function onDeleteClass() {
 		if (!routeClassId) return;
 		if (!window.confirm('Delete this class and all its data?')) return;
-		try {
-			await withRetry(() => deleteClassCascade(routeClassId));
-			clearLastClassId();
-			await invalidate(CLASSES_LIST_LOAD_KEY);
-			await goto('/');
-		} catch {
-			showToast('Could not delete class.');
-		}
+		await runMutation({
+			fn: () => deleteClassCascade(routeClassId),
+			invalidate: CLASSES_LIST_LOAD_KEY,
+			errorToast: 'Could not delete class.',
+			onSuccess: async () => {
+				clearLastClassId();
+				await goto('/');
+			}
+		});
 	}
 
 	function onClassChange(e: Event) {

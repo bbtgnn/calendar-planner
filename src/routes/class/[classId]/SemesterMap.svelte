@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { ClassRow, LessonRow } from '$lib/db/types';
+	import { runMutation } from '$lib/kit/runMutation';
 	import { updateClass } from '$lib/repos/classes.repo';
-	import { withRetry } from '$lib/db/withRetry';
 	import { showToast } from '$lib/stores/toast';
 	import {
 		assertValidSemesterBounds,
@@ -34,37 +34,42 @@
 	async function saveSemester() {
 		const a = startInput.trim();
 		const b = endInput.trim();
-		try {
-			if (a === '' && b === '') {
-				await withRetry(() =>
-					updateClass(klass.id, { semesterStart: null, semesterEnd: null })
-				);
-				showToast('Semester cleared.');
-				onSemesterSaved?.({
-					...klass,
-					semesterStart: null,
-					semesterEnd: null
-				});
-				return;
-			}
-			if (a === '' || b === '') {
-				showToast('Set both semester start and end, or clear both.');
-				return;
-			}
-			assertValidSemesterBounds(a, b);
-			await withRetry(() =>
-				updateClass(klass.id, { semesterStart: a, semesterEnd: b })
-			);
-			showToast('Semester saved.');
-			onSemesterSaved?.({
-				...klass,
-				semesterStart: a,
-				semesterEnd: b
+		if (a === '' && b === '') {
+			await runMutation({
+				fn: () => updateClass(klass.id, { semesterStart: null, semesterEnd: null }),
+				successToast: 'Semester cleared.',
+				onSuccess: () =>
+					onSemesterSaved?.({
+						...klass,
+						semesterStart: null,
+						semesterEnd: null
+					})
 			});
+			return;
+		}
+		if (a === '' || b === '') {
+			showToast('Set both semester start and end, or clear both.');
+			return;
+		}
+		try {
+			assertValidSemesterBounds(a, b);
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : 'Could not save semester.';
 			showToast(msg);
+			return;
 		}
+		await runMutation({
+			fn: () => updateClass(klass.id, { semesterStart: a, semesterEnd: b }),
+			successToast: 'Semester saved.',
+			errorToast: 'Could not save semester.',
+			mapError: (e) => (e instanceof Error ? e.message : undefined),
+			onSuccess: () =>
+				onSemesterSaved?.({
+					...klass,
+					semesterStart: a,
+					semesterEnd: b
+				})
+		});
 	}
 
 	const stripVisible = $derived(klass.semesterStart !== null && klass.semesterEnd !== null);

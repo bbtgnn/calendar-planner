@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { invalidate } from '$app/navigation';
 	import type { PageData } from './$types';
 	import { classLoadKey } from '$lib/kit/loadKeys';
+	import { runMutation } from '$lib/kit/runMutation';
 	import {
 		addStudent,
 		updateStudent,
@@ -10,7 +10,6 @@
 		replaceStudents
 	} from '$lib/repos/students.repo';
 	import { parseCsvNames, parseTxtNames } from '$lib/logic/rosterImport';
-	import { withRetry } from '$lib/db/withRetry';
 	import { showToast } from '$lib/stores/toast';
 	import type { StudentRow } from '$lib/db/types';
 
@@ -23,19 +22,18 @@
 	let previewSkipped = $state(0);
 	let fileKind = $state<'csv' | 'txt' | null>(null);
 
-	async function revalidateClass() {
-		await invalidate(classLoadKey(data.class.id));
-	}
+	const classKey = $derived(classLoadKey(data.class.id));
 
 	async function add() {
 		if (!newName.trim()) return;
-		try {
-			await withRetry(() => addStudent(data.class.id, newName.trim()));
-			newName = '';
-			await revalidateClass();
-		} catch {
-			showToast('Could not add student.');
-		}
+		await runMutation({
+			fn: () => addStudent(data.class.id, newName.trim()),
+			invalidate: classKey,
+			errorToast: 'Could not add student.',
+			onSuccess: () => {
+				newName = '';
+			}
+		});
 	}
 
 	function startEdit(s: StudentRow) {
@@ -51,23 +49,23 @@
 			showToast('Name cannot be empty.');
 			return;
 		}
-		try {
-			await withRetry(() => updateStudent(id, name));
-			editingId = null;
-			await revalidateClass();
-		} catch {
-			showToast('Could not save student.');
-		}
+		await runMutation({
+			fn: () => updateStudent(id, name),
+			invalidate: classKey,
+			errorToast: 'Could not save student.',
+			onSuccess: () => {
+				editingId = null;
+			}
+		});
 	}
 
 	async function remove(id: string) {
 		if (!window.confirm('Remove this student and their absence records?')) return;
-		try {
-			await withRetry(() => deleteStudentCascade(id));
-			await revalidateClass();
-		} catch {
-			showToast('Could not remove student.');
-		}
+		await runMutation({
+			fn: () => deleteStudentCascade(id),
+			invalidate: classKey,
+			errorToast: 'Could not remove student.'
+		});
 	}
 
 	function onFile(e: Event) {
@@ -92,15 +90,16 @@
 
 	async function doAppend() {
 		if (previewNames.length === 0) return;
-		try {
-			await withRetry(() => appendStudents(data.class.id, previewNames));
-			showToast(`Imported ${previewNames.length}, skipped ${previewSkipped}.`);
-			previewNames = [];
-			fileKind = null;
-			await revalidateClass();
-		} catch {
-			showToast('Could not import students.');
-		}
+		await runMutation({
+			fn: () => appendStudents(data.class.id, previewNames),
+			invalidate: classKey,
+			successToast: `Imported ${previewNames.length}, skipped ${previewSkipped}.`,
+			errorToast: 'Could not import students.',
+			onSuccess: () => {
+				previewNames = [];
+				fileKind = null;
+			}
+		});
 	}
 
 	async function doReplace() {
@@ -112,15 +111,16 @@
 		) {
 			return;
 		}
-		try {
-			await withRetry(() => replaceStudents(data.class.id, previewNames));
-			showToast(`Replaced with ${previewNames.length}, skipped ${previewSkipped}.`);
-			previewNames = [];
-			fileKind = null;
-			await revalidateClass();
-		} catch {
-			showToast('Could not replace roster.');
-		}
+		await runMutation({
+			fn: () => replaceStudents(data.class.id, previewNames),
+			invalidate: classKey,
+			successToast: `Replaced with ${previewNames.length}, skipped ${previewSkipped}.`,
+			errorToast: 'Could not replace roster.',
+			onSuccess: () => {
+				previewNames = [];
+				fileKind = null;
+			}
+		});
 	}
 </script>
 
