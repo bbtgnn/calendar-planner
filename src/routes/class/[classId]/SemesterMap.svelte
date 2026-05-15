@@ -9,6 +9,7 @@
 		listYearMonthsInRange,
 		monthGridMondayFirst,
 		formatYearMonthHeading,
+		toUtcIsoCalendarDate,
 		uniqueKindsByDate
 	} from '$lib/logic/semesterCalendar';
 
@@ -75,6 +76,9 @@
 	);
 
 	const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+	/** UTC calendar day, aligned with {@link monthGridMondayFirst} cell `isoDate` values. */
+	const todayUtcIso = $derived(toUtcIsoCalendarDate(new Date()));
 </script>
 
 <section class="semester-card">
@@ -111,10 +115,13 @@
 								klass.semesterStart &&
 								klass.semesterEnd &&
 								isDateInSemester(cell.isoDate, klass.semesterStart, klass.semesterEnd)}
+							{@const isToday = cell.isoDate === todayUtcIso}
 							<div
 								class="cell"
 								class:semester-out={!inS}
 								class:out-month={!cell.inMonth && inS}
+								class:today={isToday}
+								aria-current={isToday ? 'date' : undefined}
 							>
 								<span class="dnum">{Number(cell.isoDate.slice(8))}</span>
 								{#if inS}
@@ -243,6 +250,19 @@
 	.cell.out-month .dnum {
 		color: #5f6368;
 		opacity: 0.88;
+	}
+	.cell.today {
+		outline: 2px solid #1967d2;
+		outline-offset: -1px;
+		background: #e8f0fe;
+		z-index: 1;
+	}
+	.cell.semester-out.today {
+		opacity: 1;
+		background: #e3e9f4;
+	}
+	.cell.out-month.today {
+		background: #d9e6fc;
 	}
 	.dnum {
 		font-weight: 600;

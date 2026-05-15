@@ -30,6 +30,14 @@ export function listYearMonthsInRange(startIso: string, endIso: string): string[
 
 export type MonthCell = { isoDate: string; inMonth: boolean };
 
+/** `YYYY-MM-DD` for the UTC calendar day of `date` (same convention as {@link monthGridMondayFirst} cells). */
+export function toUtcIsoCalendarDate(date: Date): string {
+	const yy = date.getUTCFullYear();
+	const mm = date.getUTCMonth() + 1;
+	const dd = date.getUTCDate();
+	return `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+
 /** 6×7 grid, Monday-first week row; `inMonth` is false for leading/trailing days from adjacent months. */
 export function monthGridMondayFirst(yearMonth: string): MonthCell[] {
 	const [Y, M] = yearMonth.split('-').map(Number);

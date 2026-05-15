@@ -6,6 +6,7 @@ import {
 	listYearMonthsInRange,
 	monthGridMondayFirst,
 	formatYearMonthHeading,
+	toUtcIsoCalendarDate,
 	uniqueKindsByDate,
 	mergeSemesterFields,
 	assertValidSemesterBounds
@@ -50,6 +51,11 @@ describe('semesterCalendar', () => {
 
 	it('formatYearMonthHeading uses UTC month name', () => {
 		expect(formatYearMonthHeading('2026-04')).toBe('April 2026');
+	});
+
+	it('toUtcIsoCalendarDate matches UTC calendar components', () => {
+		const d = new Date(Date.UTC(2026, 3, 7, 23, 59, 59));
+		expect(toUtcIsoCalendarDate(d)).toBe('2026-04-07');
 	});
 
 	it('uniqueKindsByDate dedupes kinds per date', () => {
