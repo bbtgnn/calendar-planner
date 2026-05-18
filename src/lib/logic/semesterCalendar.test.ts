@@ -5,7 +5,6 @@ import {
 	isDateInSemester,
 	listYearMonthsInRange,
 	monthGridMondayFirst,
-	formatYearMonthHeading,
 	toUtcIsoCalendarDate,
 	uniqueKindsByDate,
 	mergeSemesterFields,
@@ -47,10 +46,6 @@ describe('semesterCalendar', () => {
 		const leadPad = cells.filter((c) => !c.inMonth);
 		expect(leadPad).toHaveLength(12);
 		expect(leadPad[0].isoDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-	});
-
-	it('formatYearMonthHeading uses UTC month name', () => {
-		expect(formatYearMonthHeading('2026-04')).toBe('April 2026');
 	});
 
 	it('toUtcIsoCalendarDate matches UTC calendar components', () => {

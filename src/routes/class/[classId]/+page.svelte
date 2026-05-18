@@ -26,6 +26,7 @@
 		scheduledExtraSessionCount
 	} from '$lib/logic/stats';
 	import type { ClassRow, LessonRow, LessonSessionKind } from '$lib/db/types';
+	import { formatIsoDate } from '$lib/logic/dateFormat';
 	import SemesterMap from './SemesterMap.svelte';
 
 	let { data }: { data: PageData } = $props();
@@ -97,6 +98,25 @@
 		if (s === 0) return 0;
 		return Math.round((doneLessonCount(data.lessons) / s) * 100);
 	});
+
+	const contractHoursLeft = $derived(totalUnschedTh);
+
+	const contractCompletionPct = $derived.by(() => {
+		if (targetHours <= 0) return 0;
+		return Math.min(100, Math.round((scheduled / targetHours) * 100));
+	});
+
+	type CompletionTier = 'done' | 'almost' | 'behind';
+
+	const completionTier = $derived.by((): CompletionTier => {
+		if (contractCompletionPct >= 100) return 'done';
+		if (contractCompletionPct > 85) return 'almost';
+		return 'behind';
+	});
+
+	const lessonExtraCaption = $derived(
+		`${String(doneLessonCount(data.lessons)).padStart(2, '0')} lesson / ${String(doneExtraSessionCount(data.lessons)).padStart(2, '0')} extra`
+	);
 
 	const classMetaKey = $derived(classMetaLoadKey(data.class.id));
 	const classLessonsKey = $derived(classLessonsLoadKey(data.class.id));
@@ -196,7 +216,35 @@
 		<button type="button" class="btn" onclick={saveTargets}>Save targets</button>
 	</div>
 
-	<div class="stats">
+	<div class="stats-layout">
+		<div class="stats-summary" aria-label="Overview">
+			<div class="stat-box">
+				<span class="stat-box__title">Hours</span>
+				<p class="size-8" aria-label="Contract hours left">{contractHoursLeft.toFixed(1)}</p>
+				<p class="size-4">{lessonExtraCaption}</p>
+			</div>
+			<div class="stat-box">
+				<span class="stat-box__title">Summary</span>
+				<p class="size-8 tier-{completionTier}" aria-label="Contract completion">
+					{contractCompletionPct}%
+				</p>
+				<p class="size-4 completion-legend">
+					<span class="legend-item" class:legend-active={completionTier === 'done'} data-tier="done"
+						>done</span
+					>
+					<span aria-hidden="true"> | </span>
+					<span class="legend-item" class:legend-active={completionTier === 'almost'} data-tier="almost"
+						>almost</span
+					>
+					<span aria-hidden="true"> | </span>
+					<span class="legend-item" class:legend-active={completionTier === 'behind'} data-tier="behind"
+						>way behind</span
+					>
+				</p>
+			</div>
+		</div>
+
+		<div class="stats">
 		<p class="hero"><strong>Unplanned class (teacher h):</strong> {unplannedClassTh.toFixed(2)}</p>
 		<p class="hero">
 			<strong>Max extra pool (teacher h):</strong>
@@ -229,6 +277,7 @@
 			<strong>Extra sessions done:</strong>
 			{doneExtraSessionCount(data.lessons)} / {scheduledExtraSessionCount(data.lessons)}
 		</p>
+		</div>
 	</div>
 
 	{#if dupDates}
@@ -309,7 +358,7 @@
 									{lessonFormUi(lesson.sessionKind).kindLabel}
 								</span>
 							</td>
-							<td>{lesson.date}</td>
+							<td>{formatIsoDate(lesson.date)}</td>
 							<td>{lesson.durationHours}</td>
 							<td>{lesson.title}</td>
 							<td>
@@ -379,6 +428,75 @@
 		border: 1px solid #c9ced6;
 		border-radius: 6px;
 	}
+	.stats-layout {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 1.25rem;
+		align-items: flex-start;
+		margin-top: 0.5rem;
+	}
+	.stats-summary {
+		display: flex;
+		gap: 0.75rem;
+		flex-shrink: 0;
+	}
+	.stat-box {
+		padding: 1rem 1.15rem;
+		border: 1px solid #e2e5eb;
+		border-radius: 8px;
+		background: #f8fafc;
+		min-width: 9.5rem;
+	}
+	.stat-box__title {
+		display: block;
+		font-size: 0.7rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: #64748b;
+		margin-bottom: 0.35rem;
+	}
+	.size-8 {
+		margin: 0;
+		font-size: 2rem;
+		font-weight: 700;
+		line-height: 1.1;
+		font-variant-numeric: tabular-nums;
+	}
+	.size-4 {
+		margin: 0.35rem 0 0;
+		font-size: 0.875rem;
+		line-height: 1.35;
+		color: #64748b;
+	}
+	.tier-done {
+		color: #16a34a;
+	}
+	.tier-almost {
+		color: #65a30d;
+	}
+	.tier-behind {
+		color: #9ca3af;
+	}
+	.completion-legend .legend-item {
+		color: #cbd5e1;
+	}
+	.completion-legend .legend-item.legend-active {
+		font-weight: 600;
+	}
+	.completion-legend .legend-item[data-tier='done'].legend-active {
+		color: #16a34a;
+	}
+	.completion-legend .legend-item[data-tier='almost'].legend-active {
+		color: #65a30d;
+	}
+	.completion-legend .legend-item[data-tier='behind'].legend-active {
+		color: #9ca3af;
+	}
+	.stats {
+		flex: 1;
+		min-width: 16rem;
+	}
 	.stats p {
 		margin: 0.25rem 0;
 	}
@@ -402,16 +520,19 @@
 		letter-spacing: 0.03em;
 	}
 	.badge-class {
-		background: #e8f0fe;
-		color: #174ea6;
+		background: #dcfce7;
+		color: #16a34a;
+		border: 1px solid #16a34a;
 	}
 	.badge-extra {
-		background: #f3e8fd;
-		color: #6a1b9a;
+		background: #dbeafe;
+		color: #2563eb;
+		border: 1px solid #2563eb;
 	}
 	.badge-skipped {
-		background: #fce8e6;
-		color: #c5221f;
+		background: #fee2e2;
+		color: #dc2626;
+		border: 1px solid #dc2626;
 	}
 	.btn {
 		padding: 0.4rem 0.75rem;

@@ -58,13 +58,6 @@ export function monthGridMondayFirst(yearMonth: string): MonthCell[] {
 	return cells;
 }
 
-/** e.g. `2026-04` → `April 2026` (UTC, en-US) for month titles. */
-export function formatYearMonthHeading(yearMonth: string): string {
-	const [y, m] = yearMonth.split('-').map(Number);
-	const d = new Date(Date.UTC(y, m - 1, 1));
-	return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-}
-
 export function uniqueKindsByDate(
 	lessons: Pick<LessonRow, 'date' | 'sessionKind'>[]
 ): Map<string, Set<LessonSessionKind>> {

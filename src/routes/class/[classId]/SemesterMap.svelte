@@ -4,12 +4,12 @@
 	import { runMutation } from '$lib/kit/runMutation';
 	import { updateClass } from '$lib/repos/classes.repo';
 	import { showToast } from '$lib/stores/toast';
+	import { formatYearMonthHeading } from '$lib/logic/dateFormat';
 	import {
 		assertValidSemesterBounds,
 		isDateInSemester,
 		listYearMonthsInRange,
 		monthGridMondayFirst,
-		formatYearMonthHeading,
 		toUtcIsoCalendarDate,
 		uniqueKindsByDate
 	} from '$lib/logic/semesterCalendar';
@@ -149,9 +149,12 @@
 
 <style>
 	.semester-card {
-		--dot-class: #174ea6;
-		--dot-extra: #6a1b9a;
-		--dot-skipped: #c5221f;
+		--dot-class-bg: #dcfce7;
+		--dot-class-border: #16a34a;
+		--dot-extra-bg: #dbeafe;
+		--dot-extra-border: #2563eb;
+		--dot-skipped-bg: #fee2e2;
+		--dot-skipped-border: #dc2626;
 		background: #fff;
 		padding: 1.25rem;
 		border-radius: 8px;
@@ -285,22 +288,27 @@
 	}
 	i.dot {
 		display: inline-block;
-		width: 5px;
-		height: 5px;
+		width: 6px;
+		height: 6px;
 		border-radius: 50%;
+		box-sizing: border-box;
+		border: 1px solid transparent;
 		font-style: normal;
 	}
 	.cell.out-month .dots i.dot {
 		opacity: 0.35;
 	}
 	i.dot.class {
-		background: var(--dot-class);
+		background: var(--dot-class-bg);
+		border-color: var(--dot-class-border);
 	}
 	i.dot.extra {
-		background: var(--dot-extra);
+		background: var(--dot-extra-bg);
+		border-color: var(--dot-extra-border);
 	}
 	i.dot.skipped {
-		background: var(--dot-skipped);
+		background: var(--dot-skipped-bg);
+		border-color: var(--dot-skipped-border);
 	}
 	input[type='date'] {
 		padding: 0.35rem 0.5rem;
