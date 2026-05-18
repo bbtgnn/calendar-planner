@@ -24,6 +24,32 @@ export function sumScheduledTeacherHours(lessons: LessonForContractStats[]): num
 	return sumDurationHours(lessons);
 }
 
+/** Sum of `durationHours` for done class and extra sessions (skipped excluded). */
+export function sumDoneTeacherHours(lessons: LessonForContractStats[]): number {
+	return sumDurationHours(
+		lessons.filter((l) => l.done && l.sessionKind !== 'skipped')
+	);
+}
+
+/** Done teacher hours as a percent of contract N (0–100). */
+export function contractCompletionPercent(
+	contractTeacherHours: number,
+	lessons: LessonForContractStats[]
+): number {
+	if (contractTeacherHours <= 0) return 0;
+	const done = sumDoneTeacherHours(lessons);
+	return Math.min(100, Math.round((done / contractTeacherHours) * 100));
+}
+
+/** Scheduled teacher hours as a percent of contract N (may exceed 100 if overscheduled). */
+export function contractScheduledFillPercent(
+	contractTeacherHours: number,
+	scheduledTeacherHours: number
+): number {
+	if (contractTeacherHours <= 0) return scheduledTeacherHours > 0 ? 100 : 0;
+	return Math.round((scheduledTeacherHours / contractTeacherHours) * 100);
+}
+
 export function remainingHours(totalHoursTarget: number, scheduledHours: number): number {
 	return totalHoursTarget - scheduledHours;
 }

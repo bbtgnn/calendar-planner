@@ -22,6 +22,7 @@
 		remainingFlexTeacherHours,
 		totalUnscheduledContractTeacherHours,
 		studentHoursFromTeacherHours,
+		contractScheduledFillPercent,
 		doneExtraSessionCount,
 		scheduledExtraSessionCount
 	} from '$lib/logic/stats';
@@ -101,22 +102,32 @@
 
 	const contractHoursLeft = $derived(totalUnschedTh);
 
-	const contractCompletionPct = $derived.by(() => {
-		if (targetHours <= 0) return 0;
-		return Math.min(100, Math.round((scheduled / targetHours) * 100));
+	const contractScheduledPct = $derived(contractScheduledFillPercent(targetHours, scheduled));
+
+	const contractScheduledFraction = $derived.by(() => {
+		const target = Number(targetHours);
+		const sched = scheduled;
+		if (!Number.isFinite(target) || target <= 0) {
+			return sched > 0 ? `${sched.toFixed(1)} h scheduled` : '—';
+		}
+		return `${sched.toFixed(1)} / ${target.toFixed(1)} h`;
 	});
 
 	type CompletionTier = 'done' | 'almost' | 'behind';
 
 	const completionTier = $derived.by((): CompletionTier => {
-		if (contractCompletionPct >= 100) return 'done';
-		if (contractCompletionPct > 85) return 'almost';
+		if (contractScheduledPct >= 100) return 'done';
+		if (contractScheduledPct > 85) return 'almost';
 		return 'behind';
 	});
 
-	const lessonExtraCaption = $derived(
-		`${String(doneLessonCount(data.lessons)).padStart(2, '0')} lesson / ${String(doneExtraSessionCount(data.lessons)).padStart(2, '0')} extra`
-	);
+	const lessonExtraCaption = $derived.by(() => {
+		const doneClass = doneLessonCount(data.lessons);
+		const schedClass = scheduledLessonCount(data.lessons);
+		const doneExtra = doneExtraSessionCount(data.lessons);
+		const schedExtra = scheduledExtraSessionCount(data.lessons);
+		return `${String(doneClass).padStart(2, '0')}/${String(schedClass).padStart(2, '0')} lesson · ${String(doneExtra).padStart(2, '0')}/${String(schedExtra).padStart(2, '0')} extra`;
+	});
 
 	const classMetaKey = $derived(classMetaLoadKey(data.class.id));
 	const classLessonsKey = $derived(classLessonsLoadKey(data.class.id));
@@ -220,14 +231,17 @@
 		<div class="stats-summary" aria-label="Overview">
 			<div class="stat-box">
 				<span class="stat-box__title">Hours</span>
-				<p class="size-8" aria-label="Contract hours left">{contractHoursLeft.toFixed(1)}</p>
+				<p class="size-8" aria-label="Contract hours left">
+					{contractHoursLeft.toFixed(1)}<span class="size-8-unit">h</span>
+				</p>
 				<p class="size-4">{lessonExtraCaption}</p>
 			</div>
 			<div class="stat-box">
 				<span class="stat-box__title">Summary</span>
-				<p class="size-8 tier-{completionTier}" aria-label="Contract completion">
-					{contractCompletionPct}%
+				<p class="size-8 tier-{completionTier}" aria-label="Scheduled hours on contract">
+					{contractScheduledPct}%
 				</p>
+				<p class="size-4 tier-{completionTier}-sub">{contractScheduledFraction}</p>
 				<p class="size-4 completion-legend">
 					<span class="legend-item" class:legend-active={completionTier === 'done'} data-tier="done"
 						>done</span
@@ -463,6 +477,12 @@
 		line-height: 1.1;
 		font-variant-numeric: tabular-nums;
 	}
+	.size-8-unit {
+		font-size: 1.1rem;
+		font-weight: 600;
+		color: #94a3b8;
+		margin-left: 0.1rem;
+	}
 	.size-4 {
 		margin: 0.35rem 0 0;
 		font-size: 0.875rem;
@@ -476,6 +496,21 @@
 		color: #65a30d;
 	}
 	.tier-behind {
+		color: #9ca3af;
+	}
+	.tier-done-sub,
+	.tier-almost-sub,
+	.tier-behind-sub {
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+	}
+	.tier-done-sub {
+		color: #16a34a;
+	}
+	.tier-almost-sub {
+		color: #65a30d;
+	}
+	.tier-behind-sub {
 		color: #9ca3af;
 	}
 	.completion-legend .legend-item {

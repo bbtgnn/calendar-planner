@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+	contractCompletionPercent,
+	contractScheduledFillPercent,
 	doneClassLessonCount,
 	doneExtraSessionCount,
 	doneLessonCount,
@@ -11,6 +13,7 @@ import {
 	scheduledExtraSessionCount,
 	scheduledLessonCount,
 	studentHoursFromTeacherHours,
+	sumDoneTeacherHours,
 	sumScheduledHours,
 	totalUnscheduledContractTeacherHours,
 	unplannedClassTeacherHours
@@ -26,6 +29,30 @@ describe('stats', () => {
 	it('remainingHours is target minus scheduled', () => {
 		expect(remainingHours(10, 3)).toBe(7);
 		expect(remainingHours(10, 12)).toBe(-2);
+	});
+
+	it('sumDoneTeacherHours counts done class and extra only', () => {
+		const lessons: LessonForContractStats[] = [
+			{ done: true, durationHours: 2, sessionKind: 'class' },
+			{ done: false, durationHours: 3, sessionKind: 'class' },
+			{ done: true, durationHours: 1, sessionKind: 'extra' },
+			{ done: true, durationHours: 0, sessionKind: 'skipped' }
+		];
+		expect(sumDoneTeacherHours(lessons)).toBe(3);
+	});
+
+	it('contractCompletionPercent is done hours over contract N', () => {
+		const lessons: LessonForContractStats[] = [
+			{ done: true, durationHours: 40, sessionKind: 'class' },
+			{ done: false, durationHours: 47, sessionKind: 'class' }
+		];
+		expect(contractCompletionPercent(100, lessons)).toBe(40);
+	});
+
+	it('contractScheduledFillPercent is scheduled hours over contract N', () => {
+		expect(contractScheduledFillPercent(100, 87)).toBe(87);
+		expect(contractScheduledFillPercent(100, 105)).toBe(105);
+		expect(contractScheduledFillPercent(0, 10)).toBe(100);
 	});
 
 	it('scheduledLessonCount and doneLessonCount are class-only', () => {
