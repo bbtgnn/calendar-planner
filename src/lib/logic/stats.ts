@@ -144,3 +144,101 @@ export function scheduledLessonCount(lessons: LessonForContractStats[]): number 
 export function doneLessonCount(lessons: LessonForContractStats[]): number {
 	return doneClassLessonCount(lessons);
 }
+
+export type TeacherHourStatBoxKey = 'contract' | 'class' | 'extra';
+
+export type TeacherHourStatBox = {
+	key: TeacherHourStatBoxKey;
+	title: string;
+	planned: number;
+	total: number;
+	percent: number | null;
+	fractionLabel: string;
+	percentLabel: string;
+	tier?: 'done' | 'almost' | 'behind';
+	warning?: string;
+};
+
+/** Effective extra hour cap after class overage beyond C_min. */
+export function effectiveExtraTeacherHourCap(
+	contractTeacherHours: number,
+	requiredStudentLessonHours: number,
+	classTeacherHoursScheduled: number
+): number {
+	const cMin = minimumClassTeacherHoursForStudentLessonHours(requiredStudentLessonHours);
+	const beyond = Math.max(0, classTeacherHoursScheduled - cMin);
+	const pool = contractTeacherHours - cMin;
+	return Math.max(0, pool - beyond);
+}
+
+export function contractCompletionTier(percent: number): 'done' | 'almost' | 'behind' {
+	if (percent >= 100) return 'done';
+	if (percent > 85) return 'almost';
+	return 'behind';
+}
+
+function scheduledFillPercent(total: number, planned: number): number | null {
+	if (total <= 0) return null;
+	return Math.round((planned / total) * 100);
+}
+
+function formatTeacherHourFraction(planned: number, total: number): string {
+	if (total <= 0) return '—';
+	return `${planned.toFixed(1)} / ${total.toFixed(1)} h`;
+}
+
+function formatTeacherHourPercent(percent: number | null): string {
+	if (percent === null) return '(—%)';
+	return `(${percent}%)`;
+}
+
+function makeStatBox(
+	key: TeacherHourStatBoxKey,
+	title: string,
+	planned: number,
+	total: number,
+	options?: { tier?: boolean; warning?: string }
+): TeacherHourStatBox {
+	const percent = scheduledFillPercent(total, planned);
+	const box: TeacherHourStatBox = {
+		key,
+		title,
+		planned,
+		total,
+		percent,
+		fractionLabel: formatTeacherHourFraction(planned, total),
+		percentLabel: formatTeacherHourPercent(percent),
+		warning: options?.warning
+	};
+	if (options?.tier && percent !== null) {
+		box.tier = contractCompletionTier(percent);
+	}
+	return box;
+}
+
+export function buildTeacherHourStatBoxes(
+	contractTeacherHours: number,
+	requiredStudentLessonHours: number,
+	lessons: LessonForContractStats[]
+): TeacherHourStatBox[] {
+	const tClass = sumTeacherHoursForKind(lessons, 'class');
+	const tExtra = sumTeacherHoursForKind(lessons, 'extra');
+	const tAll = tClass + tExtra;
+	const cMin = minimumClassTeacherHoursForStudentLessonHours(requiredStudentLessonHours);
+	const extraCap = effectiveExtraTeacherHourCap(
+		contractTeacherHours,
+		requiredStudentLessonHours,
+		tClass
+	);
+	const staticExtraPool = maxExtraTeacherHours(contractTeacherHours, requiredStudentLessonHours);
+	const extraWarning =
+		staticExtraPool < 0
+			? 'Contract N is below the minimum teacher hours needed for M — raise N or lower M.'
+			: undefined;
+
+	return [
+		makeStatBox('contract', 'Contract', tAll, contractTeacherHours, { tier: true }),
+		makeStatBox('class', 'Class', tClass, cMin),
+		makeStatBox('extra', 'Extra', tExtra, extraCap, { warning: extraWarning })
+	];
+}

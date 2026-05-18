@@ -11,21 +11,7 @@
 		lessonFormUi,
 		syncAddFormToKind
 	} from '$lib/logic/sessionKind';
-	import {
-		sumScheduledTeacherHours,
-		remainingHours,
-		doneLessonCount,
-		scheduledLessonCount,
-		sumTeacherHoursForKind,
-		unplannedClassTeacherHours,
-		maxExtraTeacherHours,
-		remainingFlexTeacherHours,
-		totalUnscheduledContractTeacherHours,
-		studentHoursFromTeacherHours,
-		contractScheduledFillPercent,
-		doneExtraSessionCount,
-		scheduledExtraSessionCount
-	} from '$lib/logic/stats';
+	import { buildTeacherHourStatBoxes } from '$lib/logic/stats';
 	import type { ClassRow, LessonRow, LessonSessionKind } from '$lib/db/types';
 	import { formatIsoDate } from '$lib/logic/dateFormat';
 	import SemesterMap from './SemesterMap.svelte';
@@ -69,23 +55,9 @@
 		targetStudentLessonHours = data.class.requiredStudentLessonHours;
 	});
 
-	const scheduled = $derived(sumScheduledTeacherHours(data.lessons));
-	const tClass = $derived(sumTeacherHoursForKind(data.lessons, 'class'));
-	const tExtra = $derived(sumTeacherHoursForKind(data.lessons, 'extra'));
-
-	const unplannedClassTh = $derived(unplannedClassTeacherHours(targetStudentLessonHours, tClass));
-	const maxExtraTh = $derived(maxExtraTeacherHours(targetHours, targetStudentLessonHours));
-	const remainingFlexTh = $derived(
-		remainingFlexTeacherHours(targetHours, targetStudentLessonHours, tClass, tExtra)
+	const statBoxes = $derived(
+		buildTeacherHourStatBoxes(Number(targetHours), Number(targetStudentLessonHours), data.lessons)
 	);
-	const totalUnschedTh = $derived(
-		totalUnscheduledContractTeacherHours(targetHours, tClass, tExtra)
-	);
-
-	const studentHClass = $derived(studentHoursFromTeacherHours(tClass));
-	const studentHExtra = $derived(studentHoursFromTeacherHours(tExtra));
-
-	const remaining = $derived(remainingHours(targetHours, scheduled));
 
 	const dupDates = $derived.by(() => {
 		const counts: Record<string, number> = {};
@@ -93,40 +65,6 @@
 			counts[l.date] = (counts[l.date] ?? 0) + 1;
 		}
 		return Object.values(counts).some((n) => n > 1);
-	});
-	const pctDone = $derived.by(() => {
-		const s = scheduledLessonCount(data.lessons);
-		if (s === 0) return 0;
-		return Math.round((doneLessonCount(data.lessons) / s) * 100);
-	});
-
-	const contractHoursLeft = $derived(totalUnschedTh);
-
-	const contractScheduledPct = $derived(contractScheduledFillPercent(targetHours, scheduled));
-
-	const contractScheduledFraction = $derived.by(() => {
-		const target = Number(targetHours);
-		const sched = scheduled;
-		if (!Number.isFinite(target) || target <= 0) {
-			return sched > 0 ? `${sched.toFixed(1)} h scheduled` : '—';
-		}
-		return `${sched.toFixed(1)} / ${target.toFixed(1)} h`;
-	});
-
-	type CompletionTier = 'done' | 'almost' | 'behind';
-
-	const completionTier = $derived.by((): CompletionTier => {
-		if (contractScheduledPct >= 100) return 'done';
-		if (contractScheduledPct > 85) return 'almost';
-		return 'behind';
-	});
-
-	const lessonExtraCaption = $derived.by(() => {
-		const doneClass = doneLessonCount(data.lessons);
-		const schedClass = scheduledLessonCount(data.lessons);
-		const doneExtra = doneExtraSessionCount(data.lessons);
-		const schedExtra = scheduledExtraSessionCount(data.lessons);
-		return `${String(doneClass).padStart(2, '0')}/${String(schedClass).padStart(2, '0')} lesson · ${String(doneExtra).padStart(2, '0')}/${String(schedExtra).padStart(2, '0')} extra`;
 	});
 
 	const classMetaKey = $derived(classMetaLoadKey(data.class.id));
@@ -227,71 +165,25 @@
 		<button type="button" class="btn" onclick={saveTargets}>Save targets</button>
 	</div>
 
-	<div class="stats-layout">
-		<div class="stats-summary" aria-label="Overview">
+	<div class="stats-summary" aria-label="Teacher hour overview">
+		{#each statBoxes as box (box.key)}
 			<div class="stat-box">
-				<span class="stat-box__title">Hours</span>
-				<p class="size-8" aria-label="Contract hours left">
-					{contractHoursLeft.toFixed(1)}<span class="size-8-unit">h</span>
+				<span class="stat-box__title">{box.title}</span>
+				<p class="size-8" aria-label="{box.title} planned vs total">{box.fractionLabel}</p>
+				<p
+					class="size-4"
+					class:tier-done={box.tier === 'done'}
+					class:tier-almost={box.tier === 'almost'}
+					class:tier-behind={box.tier === 'behind'}
+					aria-label="{box.title} fill percent"
+				>
+					{box.percentLabel}
 				</p>
-				<p class="size-4">{lessonExtraCaption}</p>
+				{#if box.warning}
+					<p class="warn size-4">{box.warning}</p>
+				{/if}
 			</div>
-			<div class="stat-box">
-				<span class="stat-box__title">Summary</span>
-				<p class="size-8 tier-{completionTier}" aria-label="Scheduled hours on contract">
-					{contractScheduledPct}%
-				</p>
-				<p class="size-4 tier-{completionTier}-sub">{contractScheduledFraction}</p>
-				<p class="size-4 completion-legend">
-					<span class="legend-item" class:legend-active={completionTier === 'done'} data-tier="done"
-						>done</span
-					>
-					<span aria-hidden="true"> | </span>
-					<span class="legend-item" class:legend-active={completionTier === 'almost'} data-tier="almost"
-						>almost</span
-					>
-					<span aria-hidden="true"> | </span>
-					<span class="legend-item" class:legend-active={completionTier === 'behind'} data-tier="behind"
-						>way behind</span
-					>
-				</p>
-			</div>
-		</div>
-
-		<div class="stats">
-		<p class="hero"><strong>Unplanned class (teacher h):</strong> {unplannedClassTh.toFixed(2)}</p>
-		<p class="hero">
-			<strong>Max extra pool (teacher h):</strong>
-			{maxExtraTh.toFixed(2)}
-			{#if maxExtraTh < 0}
-				<span class="warn">Contract N is below the minimum teacher hours needed for M — raise N or lower M.</span>
-			{/if}
-		</p>
-		<p class="hero"><strong>Remaining flex (teacher h):</strong> {remainingFlexTh.toFixed(2)}</p>
-		<p class="hero"><strong>Unscheduled on contract (teacher h):</strong> {totalUnschedTh.toFixed(2)}</p>
-
-		<p><strong>Scheduled (all sessions, teacher h):</strong> {scheduled.toFixed(2)}</p>
-		<p>
-			<strong>{remaining >= 0 ? 'Remaining vs contract' : 'Over contract by'}:</strong>
-			{Math.abs(remaining).toFixed(2)} h
-		</p>
-		<p>
-			<strong>Class teacher h / Extra teacher h:</strong>
-			{tClass.toFixed(2)} / {tExtra.toFixed(2)}
-		</p>
-		<p>
-			<strong>Student h (derived) — class / extra:</strong>
-			{studentHClass.toFixed(2)} / {studentHExtra.toFixed(2)}
-		</p>
-		<p>
-			<strong>Class lessons done:</strong>
-			{doneLessonCount(data.lessons)} / {scheduledLessonCount(data.lessons)} ({pctDone}%)
-		</p>
-		<p>
-			<strong>Extra sessions done:</strong>
-			{doneExtraSessionCount(data.lessons)} / {scheduledExtraSessionCount(data.lessons)}
-		</p>
-		</div>
+		{/each}
 	</div>
 
 	{#if dupDates}
@@ -442,24 +334,18 @@
 		border: 1px solid #c9ced6;
 		border-radius: 6px;
 	}
-	.stats-layout {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 1.25rem;
-		align-items: flex-start;
-		margin-top: 0.5rem;
-	}
 	.stats-summary {
-		display: flex;
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: 0.75rem;
-		flex-shrink: 0;
+		margin-top: 0.5rem;
 	}
 	.stat-box {
 		padding: 1rem 1.15rem;
 		border: 1px solid #e2e5eb;
 		border-radius: 8px;
 		background: #f8fafc;
-		min-width: 9.5rem;
+		min-width: 0;
 	}
 	.stat-box__title {
 		display: block;
@@ -477,12 +363,6 @@
 		line-height: 1.1;
 		font-variant-numeric: tabular-nums;
 	}
-	.size-8-unit {
-		font-size: 1.1rem;
-		font-weight: 600;
-		color: #94a3b8;
-		margin-left: 0.1rem;
-	}
 	.size-4 {
 		margin: 0.35rem 0 0;
 		font-size: 0.875rem;
@@ -497,46 +377,6 @@
 	}
 	.tier-behind {
 		color: #9ca3af;
-	}
-	.tier-done-sub,
-	.tier-almost-sub,
-	.tier-behind-sub {
-		font-weight: 600;
-		font-variant-numeric: tabular-nums;
-	}
-	.tier-done-sub {
-		color: #16a34a;
-	}
-	.tier-almost-sub {
-		color: #65a30d;
-	}
-	.tier-behind-sub {
-		color: #9ca3af;
-	}
-	.completion-legend .legend-item {
-		color: #cbd5e1;
-	}
-	.completion-legend .legend-item.legend-active {
-		font-weight: 600;
-	}
-	.completion-legend .legend-item[data-tier='done'].legend-active {
-		color: #16a34a;
-	}
-	.completion-legend .legend-item[data-tier='almost'].legend-active {
-		color: #65a30d;
-	}
-	.completion-legend .legend-item[data-tier='behind'].legend-active {
-		color: #9ca3af;
-	}
-	.stats {
-		flex: 1;
-		min-width: 16rem;
-	}
-	.stats p {
-		margin: 0.25rem 0;
-	}
-	.stats .hero {
-		font-size: 1rem;
 	}
 	.warn {
 		display: block;
@@ -630,5 +470,10 @@
 		clip: rect(0, 0, 0, 0);
 		white-space: nowrap;
 		border: 0;
+	}
+	@media (max-width: 640px) {
+		.stats-summary {
+			grid-template-columns: 1fr;
+		}
 	}
 </style>
