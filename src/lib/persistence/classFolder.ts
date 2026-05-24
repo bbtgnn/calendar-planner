@@ -5,12 +5,18 @@ export function isFileStorageSupported(): boolean {
 	return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 }
 
+type PermissionDirectoryHandle = FileSystemDirectoryHandle & {
+	queryPermission(descriptor: { mode: 'readwrite' }): Promise<PermissionState>;
+	requestPermission(descriptor: { mode: 'readwrite' }): Promise<PermissionState>;
+};
+
 export async function ensureReadWritePermission(
 	handle: FileSystemDirectoryHandle
 ): Promise<boolean> {
 	const opts = { mode: 'readwrite' as const };
-	if ((await handle.queryPermission(opts)) === 'granted') return true;
-	return (await handle.requestPermission(opts)) === 'granted';
+	const permHandle = handle as PermissionDirectoryHandle;
+	if ((await permHandle.queryPermission(opts)) === 'granted') return true;
+	return (await permHandle.requestPermission(opts)) === 'granted';
 }
 
 export async function readPlannerFile(
