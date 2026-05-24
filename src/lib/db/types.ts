@@ -36,3 +36,10 @@ export type AbsenceRow = {
 	lessonId: LessonId;
 	studentId: StudentId;
 };
+
+export type ClassFolderMetaRow = {
+	classId: ClassId;
+	directoryHandle: FileSystemDirectoryHandle;
+	linkedAt: number;
+	lastSyncedAt?: number;
+};

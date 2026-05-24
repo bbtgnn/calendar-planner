@@ -1,11 +1,12 @@
 import Dexie, { type Table } from 'dexie';
-import type { AbsenceRow, ClassRow, LessonRow, StudentRow } from './types';
+import type { AbsenceRow, ClassFolderMetaRow, ClassRow, LessonRow, StudentRow } from './types';
 
 export class LessonPlannerDB extends Dexie {
 	classes!: Table<ClassRow, string>;
 	students!: Table<StudentRow, string>;
 	lessons!: Table<LessonRow, string>;
 	absences!: Table<AbsenceRow, string>;
+	classFolders!: Table<ClassFolderMetaRow, string>;
 
 	constructor() {
 		super('lesson-planner-db');
@@ -56,6 +57,13 @@ export class LessonPlannerDB extends Dexie {
 						if (c.semesterEnd === undefined) c.semesterEnd = null;
 					});
 			});
+		this.version(4).stores({
+			classes: 'id, name, createdAt',
+			students: 'id, classId, name',
+			lessons: 'id, classId, date, done, sessionKind',
+			absences: 'id, lessonId, studentId',
+			classFolders: 'classId'
+		});
 	}
 }
 
