@@ -9,7 +9,7 @@
 		StudentRow
 	} from '$lib/db/types';
 	import { clearLastClassId } from '$lib/preferences/activeClass';
-	import { showToast } from '$lib/stores/toast';
+	import { showToast } from '$lib/ui/toast.svelte';
 
 	type ParsedBackup = {
 		classes: ClassRow[];

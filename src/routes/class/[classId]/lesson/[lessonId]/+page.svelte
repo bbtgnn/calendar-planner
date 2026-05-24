@@ -9,7 +9,7 @@
 		syncEditorFormToKind
 	} from '$lib/logic/sessionKind';
 	import { setAbsent } from '$lib/repos/attendance.repo';
-	import { showToast } from '$lib/stores/toast';
+	import { showToast } from '$lib/ui/toast.svelte';
 	import type { LessonSessionKind } from '$lib/db/types';
 
 	let { data }: { data: PageData } = $props();

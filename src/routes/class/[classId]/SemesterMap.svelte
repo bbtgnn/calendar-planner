@@ -3,7 +3,7 @@
 	import { classMetaLoadKey } from '$lib/kit/loadKeys';
 	import { runMutation } from '$lib/kit/runMutation';
 	import { updateClass } from '$lib/repos/classes.repo';
-	import { showToast } from '$lib/stores/toast';
+	import { showToast } from '$lib/ui/toast.svelte';
 	import { formatYearMonthHeading } from '$lib/logic/dateFormat';
 	import {
 		assertValidSemesterBounds,

@@ -10,7 +10,7 @@
 		replaceStudents
 	} from '$lib/repos/students.repo';
 	import { parseCsvNames, parseTxtNames } from '$lib/logic/rosterImport';
-	import { showToast } from '$lib/stores/toast';
+	import { showToast } from '$lib/ui/toast.svelte';
 	import type { StudentRow } from '$lib/db/types';
 
 	let { data }: { data: PageData } = $props();

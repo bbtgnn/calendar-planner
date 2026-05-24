@@ -7,7 +7,7 @@ const { invalidate, showToast, withRetry } = vi.hoisted(() => ({
 }));
 
 vi.mock('$app/navigation', () => ({ invalidate }));
-vi.mock('$lib/stores/toast', () => ({ showToast }));
+vi.mock('$lib/ui/toast.svelte', () => ({ showToast }));
 vi.mock('$lib/db/withRetry', () => ({ withRetry }));
 
 import { invalidateClassMeta, invalidateLoadKeys, runMutation } from './runMutation';

@@ -8,7 +8,7 @@ import {
 	classStudentsLoadKey
 } from '$lib/kit/loadKeys';
 import { repoErrorMessage } from '$lib/kit/repoErrors';
-import { showToast } from '$lib/stores/toast';
+import { showToast } from '$lib/ui/toast.svelte';
 
 export type MutationResult<T> = { ok: true; value: T } | { ok: false };
 

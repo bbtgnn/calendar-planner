@@ -5,7 +5,7 @@
 	import { invalidateClassMeta, runMutation } from '$lib/kit/runMutation';
 	import { createLesson, updateLesson, deleteLessonCascade } from '$lib/repos/lessons.repo';
 	import { updateClass } from '$lib/repos/classes.repo';
-	import { showToast } from '$lib/stores/toast';
+	import { showToast } from '$lib/ui/toast.svelte';
 	import {
 		applyKindToForm,
 		lessonFormUi,

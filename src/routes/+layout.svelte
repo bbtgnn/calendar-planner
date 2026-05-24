@@ -4,12 +4,13 @@
 	import { page } from '$app/state';
 	import { CLASSES_LIST_LOAD_KEY, classMetaLoadKey, classScopeLoadKeys } from '$lib/kit/loadKeys';
 	import { runMutation } from '$lib/kit/runMutation';
-	import { toastMessage } from '$lib/stores/toast';
+	import { getToastMessage } from '$lib/ui/toast.svelte';
 	import { createClass, deleteClassCascade, updateClass } from '$lib/repos/classes.repo';
 	import { clearLastClassId } from '$lib/preferences/activeClass';
 
 	let { data, children } = $props();
 
+	const toast = $derived(getToastMessage());
 	const classes = $derived(data.classes);
 
 	const routeClassId = $derived(
@@ -86,8 +87,8 @@
 		{/if}
 	</header>
 
-	{#if $toastMessage}
-		<div class="toast" role="status">{$toastMessage}</div>
+	{#if toast}
+		<div class="toast" role="status">{toast}</div>
 	{/if}
 
 	<main class="main">
