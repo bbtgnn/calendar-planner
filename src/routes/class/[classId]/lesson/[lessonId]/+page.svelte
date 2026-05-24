@@ -2,13 +2,13 @@
 	import type { PageData } from './$types';
 	import { classLessonsLoadKey, lessonLoadKey } from '$lib/kit/loadKeys';
 	import { invalidateLoadKeys, runMutation } from '$lib/kit/runMutation';
-	import { updateLesson } from '$lib/repos/lessons.repo';
+	import { updateLesson } from '$lib/application/lessons';
 	import {
 		applyKindToForm,
 		lessonFormUi,
 		syncEditorFormToKind
 	} from '$lib/logic/sessionKind';
-	import { setAbsent } from '$lib/repos/attendance.repo';
+	import { setAbsent } from '$lib/application/attendance';
 	import { showToast } from '$lib/ui/toast.svelte';
 	import type { LessonSessionKind } from '$lib/db/types';
 

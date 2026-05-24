@@ -3,8 +3,8 @@
 	import type { PageData } from './$types';
 	import { classLessonsLoadKey, classMetaLoadKey } from '$lib/kit/loadKeys';
 	import { invalidateClassMeta, runMutation } from '$lib/kit/runMutation';
-	import { createLesson, updateLesson, deleteLessonCascade } from '$lib/repos/lessons.repo';
-	import { updateClass } from '$lib/repos/classes.repo';
+	import { createLesson, updateLesson, deleteLessonCascade } from '$lib/application/lessons';
+	import { updateClass } from '$lib/application/classes';
 	import { showToast } from '$lib/ui/toast.svelte';
 	import {
 		applyKindToForm,

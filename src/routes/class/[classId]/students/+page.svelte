@@ -8,7 +8,7 @@
 		deleteStudentCascade,
 		appendStudents,
 		replaceStudents
-	} from '$lib/repos/students.repo';
+	} from '$lib/application/students';
 	import { parseCsvNames, parseTxtNames } from '$lib/logic/rosterImport';
 	import { showToast } from '$lib/ui/toast.svelte';
 	import type { StudentRow } from '$lib/db/types';
