@@ -4,9 +4,11 @@
 
 **Goal:** Persist each class to `planner.json` in a user-chosen directory via the File System Access API, with Dexie as the working store, debounced auto-save, and a setup flow for existing IndexedDB classes.
 
-**Architecture:** Pure `planner.json` serialize/parse/validate module (tested). Dexie v4 adds a `classFolders` meta table for `FileSystemDirectoryHandle`. On layout load, hydrate Dexie from files when all classes are linked; otherwise redirect to `/setup`. `runMutation` schedules debounced per-class flushes after successful writes.
+**Architecture:** Zod schemas for `planner.json` and legacy backup JSON. Dexie v4 `classFolders` meta stores per-class `FileSystemDirectoryHandle`. **`src/lib/application/`** orchestrates repo writes then `notifyClassDirty(classId)` (backend-style use-case layer). **`runMutation`** stays UI-only (retry, invalidate, toast). Shared UI state uses **Svelte 5 runes** in `.svelte.ts` modules (`toast`, `saveStatus`), not `writable` stores.
 
-**Tech Stack:** SvelteKit 2, Svelte 5, Dexie 4, File System Access API, Vitest, Bun
+**Tech Stack:** SvelteKit 2, Svelte 5, Dexie 4, Zod, File System Access API, Vitest, Bun
+
+**Plan revisions (2026-05-24):** Zod validation; runes for toast/saveStatus; application layer (A′) instead of `persistClassIds` on `runMutation`; `/restore` shares Zod schemas.
 
 **Spec:** `docs/superpowers/specs/2026-05-24-per-class-file-storage-design.md`
 
@@ -16,271 +18,260 @@
 
 | File | Action | Responsibility |
 |------|--------|----------------|
-| `src/lib/persistence/plannerFile.ts` | **Create** | Parse/serialize/validate `planner.json` v1 |
-| `src/lib/persistence/plannerFile.test.ts` | **Create** | Unit tests |
-| `src/lib/persistence/snapshot.ts` | **Create** | Read class slice from Dexie → `PlannerFileV1` |
-| `src/lib/persistence/snapshot.test.ts` | **Create** | Snapshot tests with fake-indexeddb |
+| `src/lib/schemas/rows.ts` | **Create** | Zod schemas for `ClassRow`, `StudentRow`, `LessonRow`, `AbsenceRow` |
+| `src/lib/schemas/plannerFile.ts` | **Create** | `plannerFileSchema` + FK refinements |
+| `src/lib/schemas/legacyBackup.ts` | **Create** | Monolithic four-array backup schema (for `/restore`) |
+| `src/lib/schemas/*.test.ts` | **Create** | Parse/round-trip tests |
+| `src/lib/persistence/plannerFile.ts` | **Create** | `parsePlannerFile`, `serializePlannerFile` (thin Zod wrappers) |
+| `src/lib/persistence/snapshot.ts` | **Create** | Read class slice from Dexie → validated object |
 | `src/lib/persistence/classFolder.ts` | **Create** | FSA read/write `planner.json`, permissions |
 | `src/lib/persistence/meta.ts` | **Create** | CRUD for `classFolders` table |
 | `src/lib/persistence/hydrate.ts` | **Create** | Replace one class in Dexie from parsed file |
+| `src/lib/persistence/notify.ts` | **Create** | `notifyClassDirty(classId)` → debounced flush |
 | `src/lib/persistence/flush.ts` | **Create** | Debounced per-class flush queue |
-| `src/lib/persistence/setup.ts` | **Create** | `getUnlinkedClassIds`, `isFileStorageSupported`, `linkClassFolder` |
+| `src/lib/persistence/setup.ts` | **Create** | `getUnlinkedClassIds`, `needsSetup`, FSA support check |
 | `src/lib/persistence/linkClass.ts` | **Create** | Pick folder + write initial file + save meta |
-| `src/lib/stores/saveStatus.ts` | **Create** | `idle` \| `saving` \| `saved` \| `failed` |
+| `src/lib/ui/toast.svelte.ts` | **Create** | Runes-based toast (`showToast`, `getToastMessage`) |
+| `src/lib/ui/saveStatus.svelte.ts` | **Create** | Runes-based save indicator state |
+| `src/lib/application/classes.ts` | **Create** | Create/update/delete class + `notifyClassDirty` |
+| `src/lib/application/lessons.ts` | **Create** | Lesson mutations + notify |
+| `src/lib/application/students.ts` | **Create** | Student mutations + notify |
+| `src/lib/application/attendance.ts` | **Create** | `setAbsent` + notify |
 | `src/lib/db/types.ts` | **Modify** | Add `ClassFolderMetaRow` |
 | `src/lib/db/client.ts` | **Modify** | Dexie v4 `classFolders` table |
-| `src/lib/kit/runMutation.ts` | **Modify** | Optional `persistClassIds` → schedule flush |
-| `src/lib/kit/runMutation.test.ts` | **Modify** | Mock flush scheduler |
+| `src/lib/kit/runMutation.ts` | **Modify** | Import toast from `$lib/ui/toast.svelte.ts` only |
+| `src/lib/stores/toast.ts` | **Delete** | Replaced by `toast.svelte.ts` |
+| `src/routes/**/*.svelte` | **Modify** | Import application layer + runes toast (not repos for writes) |
+| `src/routes/restore/+page.svelte` | **Modify** | Use `parseLegacyBackup` from Zod schemas |
 | `src/routes/+layout.ts` | **Modify** | FSA check, setup redirect, hydrate |
-| `src/routes/+layout.svelte` | **Modify** | Create class + folder, save indicator, delete meta |
 | `src/routes/setup/+page.svelte` | **Create** | Link folders for unlinked classes |
-| `src/routes/setup/+page.ts` | **Create** | Load unlinked class list |
-| `src/routes/class/[classId]/+layout.svelte` | **Modify** | Reconnect banner when permission lost |
 | `README.md` | **Modify** | Folder-per-class + Chrome/Edge note |
 
-All `runMutation` call sites in routes get `persistClassIds` (see Task 10).
+Routes call **`application/*`** inside `runMutation({ fn })`. Repos stay Dexie-only.
 
 ---
 
-### Task 1: `planner.json` types and validation
+### Task 0: Zod dependency + runes UI modules
 
 **Files:**
-- Create: `src/lib/persistence/plannerFile.ts`
-- Create: `src/lib/persistence/plannerFile.test.ts`
+- Modify: `package.json` (via `bun add zod`)
+- Create: `src/lib/ui/toast.svelte.ts`
+- Create: `src/lib/ui/saveStatus.svelte.ts`
+- Modify: `src/lib/kit/runMutation.ts`
+- Modify: `src/lib/kit/runMutation.test.ts`
+- Modify: `src/routes/+layout.svelte`
+- Delete: `src/lib/stores/toast.ts`
 
-- [ ] **Step 1: Write failing tests**
+- [ ] **Step 1: Install Zod**
+
+```bash
+bun add zod
+```
+
+- [ ] **Step 2: Create `toast.svelte.ts`**
 
 ```ts
-// src/lib/persistence/plannerFile.test.ts
-import { describe, expect, it } from 'vitest';
-import { parsePlannerFile, serializePlannerFile, type PlannerFileV1 } from './plannerFile';
+// src/lib/ui/toast.svelte.ts
+let message = $state<string | null>(null);
+let hideTimer: ReturnType<typeof setTimeout> | undefined;
 
-const sample: PlannerFileV1 = {
-	version: 1,
-	class: {
-		id: 'c1',
-		name: 'Math',
-		totalHoursTarget: 40,
-		requiredStudentLessonHours: 0,
-		createdAt: 1,
-		semesterStart: null,
-		semesterEnd: null
-	},
-	students: [{ id: 's1', classId: 'c1', name: 'Ada' }],
-	lessons: [
-		{
-			id: 'l1',
-			classId: 'c1',
-			date: '2026-01-15',
-			durationHours: 2,
-			title: 'Intro',
-			done: false,
-			sessionKind: 'class'
-		}
-	],
-	absences: []
-};
+export function getToastMessage(): string | null {
+	return message;
+}
 
-describe('plannerFile', () => {
-	it('round-trips serialize and parse', () => {
-		const json = serializePlannerFile(sample);
-		const parsed = parsePlannerFile(JSON.parse(json));
-		expect(parsed.ok).toBe(true);
-		if (parsed.ok) expect(parsed.value).toEqual(sample);
-	});
+export function showToast(text: string, ms = 4000): void {
+	message = text;
+	if (hideTimer) clearTimeout(hideTimer);
+	hideTimer = setTimeout(() => {
+		message = null;
+	}, ms);
+}
+```
 
-	it('rejects wrong version', () => {
-		const r = parsePlannerFile({ ...sample, version: 99 });
-		expect(r.ok).toBe(false);
-	});
+- [ ] **Step 3: Create `saveStatus.svelte.ts`**
 
-	it('rejects student with wrong classId', () => {
-		const bad = {
-			...sample,
-			students: [{ id: 's1', classId: 'other', name: 'Ada' }]
-		};
-		const r = parsePlannerFile(bad);
-		expect(r.ok).toBe(false);
-	});
+```ts
+// src/lib/ui/saveStatus.svelte.ts
+export type SaveStatus = 'idle' | 'saving' | 'saved' | 'failed';
+
+let status = $state<SaveStatus>('idle');
+
+export function getSaveStatus(): SaveStatus {
+	return status;
+}
+
+export function setSaveStatus(next: SaveStatus): void {
+	status = next;
+}
+```
+
+- [ ] **Step 4: Point `runMutation` at `$lib/ui/toast.svelte.ts`; update test mock path**
+
+- [ ] **Step 5: In `+layout.svelte`, replace `$toastMessage` store with runes:**
+
+```svelte
+import { getToastMessage } from '$lib/ui/toast.svelte.ts';
+
+const toast = $derived(getToastMessage());
+
+{#if toast}
+	<div class="toast" role="status">{toast}</div>
+{/if}
+```
+
+Update other files importing `$lib/stores/toast` → `$lib/ui/toast.svelte.ts` (grep).
+
+- [ ] **Step 6: Delete `src/lib/stores/toast.ts`; run `bun run check && bun run test`**
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add package.json bun.lock src/lib/ui/ src/lib/kit/ src/routes/
+git rm src/lib/stores/toast.ts
+git commit -m "refactor: zod dep and runes-based toast/saveStatus modules"
+```
+
+---
+
+### Task 1: Zod schemas + planner file helpers
+
+**Files:**
+- Create: `src/lib/schemas/rows.ts`
+- Create: `src/lib/schemas/plannerFile.ts`
+- Create: `src/lib/schemas/legacyBackup.ts`
+- Create: `src/lib/schemas/plannerFile.test.ts`
+- Create: `src/lib/persistence/plannerFile.ts`
+
+- [ ] **Step 1: Row schemas (`rows.ts`)**
+
+```ts
+import { z } from 'zod';
+
+export const lessonSessionKindSchema = z.enum(['class', 'extra', 'skipped']);
+
+export const classRowSchema = z.object({
+	id: z.string().min(1),
+	name: z.string().min(1),
+	totalHoursTarget: z.number().finite(),
+	requiredStudentLessonHours: z.number().finite(),
+	createdAt: z.number().finite(),
+	semesterStart: z.string().nullable(),
+	semesterEnd: z.string().nullable()
+});
+
+export const studentRowSchema = z.object({
+	id: z.string().min(1),
+	classId: z.string().min(1),
+	name: z.string().min(1)
+});
+
+export const lessonRowSchema = z.object({
+	id: z.string().min(1),
+	classId: z.string().min(1),
+	date: z.string().min(1),
+	durationHours: z.number().finite(),
+	title: z.string(),
+	done: z.boolean(),
+	sessionKind: lessonSessionKindSchema.default('class')
+});
+
+export const absenceRowSchema = z.object({
+	id: z.string().min(1),
+	lessonId: z.string().min(1),
+	studentId: z.string().min(1)
 });
 ```
 
-- [ ] **Step 2: Run tests — expect FAIL**
+- [ ] **Step 2: `plannerFileSchema` with FK refinements (`schemas/plannerFile.ts`)**
 
-Run: `bun run test src/lib/persistence/plannerFile.test.ts`  
-Expected: FAIL — module not found
+```ts
+import { z } from 'zod';
+import {
+	absenceRowSchema,
+	classRowSchema,
+	lessonRowSchema,
+	studentRowSchema
+} from './rows';
 
-- [ ] **Step 3: Implement `plannerFile.ts`**
+export const plannerFileSchema = z
+	.object({
+		version: z.literal(1),
+		class: classRowSchema,
+		students: z.array(studentRowSchema),
+		lessons: z.array(lessonRowSchema),
+		absences: z.array(absenceRowSchema)
+	})
+	.superRefine((data, ctx) => {
+		const classId = data.class.id;
+		for (const [i, s] of data.students.entries()) {
+			if (s.classId !== classId) {
+				ctx.addIssue({ code: 'custom', message: 'student classId mismatch', path: ['students', i, 'classId'] });
+			}
+		}
+		for (const [i, l] of data.lessons.entries()) {
+			if (l.classId !== classId) {
+				ctx.addIssue({ code: 'custom', message: 'lesson classId mismatch', path: ['lessons', i, 'classId'] });
+			}
+		}
+		const lessonIds = new Set(data.lessons.map((l) => l.id));
+		const studentIds = new Set(data.students.map((s) => s.id));
+		for (const [i, a] of data.absences.entries()) {
+			if (!lessonIds.has(a.lessonId) || !studentIds.has(a.studentId)) {
+				ctx.addIssue({ code: 'custom', message: 'invalid absence reference', path: ['absences', i] });
+			}
+		}
+	});
+
+export type PlannerFileV1 = z.infer<typeof plannerFileSchema>;
+```
+
+- [ ] **Step 3: `legacyBackupSchema` (`schemas/legacyBackup.ts`)** — same row schemas, top-level four arrays, cross-array FK checks (port logic from `/restore`).
+
+```ts
+export const legacyBackupSchema = z
+	.object({
+		classes: z.array(classRowSchema),
+		students: z.array(studentRowSchema),
+		lessons: z.array(lessonRowSchema),
+		absences: z.array(absenceRowSchema)
+	})
+	.superRefine(/* classIds, lessonIds, studentIds sets — same rules as restore page */);
+export type LegacyBackup = z.infer<typeof legacyBackupSchema>;
+```
+
+- [ ] **Step 4: Tests + thin persistence wrapper**
 
 ```ts
 // src/lib/persistence/plannerFile.ts
-import type { AbsenceRow, ClassRow, LessonRow, LessonSessionKind, StudentRow } from '$lib/db/types';
+import { plannerFileSchema, type PlannerFileV1 } from '$lib/schemas/plannerFile';
 
-export const PLANNER_FILE_VERSION = 1;
-export const PLANNER_FILE_NAME = 'planner.json';
-
-export type PlannerFileV1 = {
-	version: 1;
-	class: ClassRow;
-	students: StudentRow[];
-	lessons: LessonRow[];
-	absences: AbsenceRow[];
-};
+const INVALID = 'Could not load planner.json — file may be damaged.';
 
 export type ParseResult =
 	| { ok: true; value: PlannerFileV1 }
 	| { ok: false; message: string };
 
-const SESSION_KINDS = new Set<LessonSessionKind>(['class', 'extra', 'skipped']);
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-	return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-function requireString(obj: Record<string, unknown>, key: string): string | null {
-	const v = obj[key];
-	return typeof v === 'string' && v.length > 0 ? v : null;
-}
-
-function requireNumber(obj: Record<string, unknown>, key: string): number | null {
-	const v = obj[key];
-	return typeof v === 'number' && Number.isFinite(v) ? v : null;
-}
-
-function requireBoolean(obj: Record<string, unknown>, key: string): boolean | null {
-	const v = obj[key];
-	return typeof v === 'boolean' ? v : null;
-}
-
-function parseClassRow(raw: unknown): ClassRow | null {
-	if (!isRecord(raw)) return null;
-	const id = requireString(raw, 'id');
-	const name = requireString(raw, 'name');
-	const totalHoursTarget = requireNumber(raw, 'totalHoursTarget');
-	const createdAt = requireNumber(raw, 'createdAt');
-	if (!id || !name || totalHoursTarget === null || createdAt === null) return null;
-	const requiredStudentLessonHours = requireNumber(raw, 'requiredStudentLessonHours') ?? 0;
-	const semesterStart =
-		raw.semesterStart === null || raw.semesterStart === undefined
-			? null
-			: requireString(raw, 'semesterStart');
-	const semesterEnd =
-		raw.semesterEnd === null || raw.semesterEnd === undefined
-			? null
-			: requireString(raw, 'semesterEnd');
-	if (raw.semesterStart !== undefined && raw.semesterStart !== null && semesterStart === null)
-		return null;
-	if (raw.semesterEnd !== undefined && raw.semesterEnd !== null && semesterEnd === null)
-		return null;
-	return {
-		id,
-		name,
-		totalHoursTarget,
-		requiredStudentLessonHours,
-		createdAt,
-		semesterStart,
-		semesterEnd
-	};
-}
-
-function parseStudentRow(raw: unknown): StudentRow | null {
-	if (!isRecord(raw)) return null;
-	const id = requireString(raw, 'id');
-	const classId = requireString(raw, 'classId');
-	const name = requireString(raw, 'name');
-	if (!id || !classId || !name) return null;
-	return { id, classId, name };
-}
-
-function parseLessonRow(raw: unknown): LessonRow | null {
-	if (!isRecord(raw)) return null;
-	const id = requireString(raw, 'id');
-	const classId = requireString(raw, 'classId');
-	const date = requireString(raw, 'date');
-	const durationHours = requireNumber(raw, 'durationHours');
-	const title = requireString(raw, 'title');
-	const done = requireBoolean(raw, 'done');
-	if (!id || !classId || !date || durationHours === null || title === null || done === null)
-		return null;
-	const kindRaw = raw.sessionKind;
-	const sessionKind =
-		typeof kindRaw === 'string' && SESSION_KINDS.has(kindRaw as LessonSessionKind)
-			? (kindRaw as LessonSessionKind)
-			: 'class';
-	return { id, classId, date, durationHours, title, done, sessionKind };
-}
-
-function parseAbsenceRow(raw: unknown): AbsenceRow | null {
-	if (!isRecord(raw)) return null;
-	const id = requireString(raw, 'id');
-	const lessonId = requireString(raw, 'lessonId');
-	const studentId = requireString(raw, 'studentId');
-	if (!id || !lessonId || !studentId) return null;
-	return { id, lessonId, studentId };
-}
-
-const INVALID_SHAPE = 'Could not load planner.json — file may be damaged.';
-const INVALID_REFS = 'Could not load planner.json — invalid references inside file.';
-
 export function parsePlannerFile(json: unknown): ParseResult {
-	if (!isRecord(json)) return { ok: false, message: INVALID_SHAPE };
-	if (json.version !== PLANNER_FILE_VERSION) return { ok: false, message: INVALID_SHAPE };
-
-	const classRow = parseClassRow(json.class);
-	if (!classRow) return { ok: false, message: INVALID_SHAPE };
-
-	if (!Array.isArray(json.students) || !Array.isArray(json.lessons) || !Array.isArray(json.absences)) {
-		return { ok: false, message: INVALID_SHAPE };
-	}
-
-	const students: StudentRow[] = [];
-	for (const raw of json.students) {
-		const row = parseStudentRow(raw);
-		if (!row || row.classId !== classRow.id) return { ok: false, message: INVALID_REFS };
-		students.push(row);
-	}
-
-	const studentIds = new Set(students.map((s) => s.id));
-
-	const lessons: LessonRow[] = [];
-	for (const raw of json.lessons) {
-		const row = parseLessonRow(raw);
-		if (!row || row.classId !== classRow.id) return { ok: false, message: INVALID_REFS };
-		lessons.push(row);
-	}
-
-	const lessonIds = new Set(lessons.map((l) => l.id));
-
-	const absences: AbsenceRow[] = [];
-	for (const raw of json.absences) {
-		const row = parseAbsenceRow(raw);
-		if (!row) return { ok: false, message: INVALID_SHAPE };
-		if (!lessonIds.has(row.lessonId) || !studentIds.has(row.studentId)) {
-			return { ok: false, message: INVALID_REFS };
-		}
-		absences.push(row);
-	}
-
-	return {
-		ok: true,
-		value: { version: 1, class: classRow, students, lessons, absences }
-	};
+	const r = plannerFileSchema.safeParse(json);
+	if (!r.success) return { ok: false, message: INVALID };
+	return { ok: true, value: r.data };
 }
 
 export function serializePlannerFile(data: PlannerFileV1): string {
 	return JSON.stringify(data, null, 2);
 }
+
+export function parseLegacyBackup(json: unknown): ParseResult & { ok: false; message: string } | { ok: true; value: LegacyBackup } {
+	// use legacyBackupSchema.safeParse; map errors to restore page messages
+}
 ```
 
-- [ ] **Step 4: Run tests — expect PASS**
-
-Run: `bun run test src/lib/persistence/plannerFile.test.ts`
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Run tests, commit**
 
 ```bash
-git add src/lib/persistence/plannerFile.ts src/lib/persistence/plannerFile.test.ts
-git commit -m "feat: add planner.json parse and serialize"
+bun run test src/lib/schemas src/lib/persistence/plannerFile.test.ts
+git add src/lib/schemas src/lib/persistence/plannerFile.ts
+git commit -m "feat: zod schemas for planner.json and legacy backup"
 ```
 
 ---
@@ -544,71 +535,31 @@ git commit -m "feat: hydrate Dexie class rows from planner.json"
 
 ---
 
-### Task 6: Debounced flush + save status store
+### Task 6: `notifyClassDirty` + debounced flush
 
 **Files:**
+- Create: `src/lib/persistence/notify.ts`
 - Create: `src/lib/persistence/flush.ts`
-- Create: `src/lib/stores/saveStatus.ts`
 
-- [ ] **Step 1: Save status store**
+*(Save status runes module created in Task 0.)*
 
-```ts
-import { writable } from 'svelte/store';
-
-export type SaveStatus = 'idle' | 'saving' | 'saved' | 'failed';
-
-export const saveStatus = writable<SaveStatus>('idle');
-
-export function setSaveStatus(status: SaveStatus): void {
-	saveStatus.set(status);
-}
-```
-
-- [ ] **Step 2: Flush module**
+- [ ] **Step 1: `notify.ts`**
 
 ```ts
-import { loadClassSnapshot } from './snapshot';
-import { writePlannerFile } from './classFolder';
-import { getFolderHandle, touchFolderSynced } from './meta';
-import { setSaveStatus } from '$lib/stores/saveStatus';
-import { showToast } from '$lib/stores/toast';
+import { scheduleClassFlush } from './flush';
 import type { ClassId } from '$lib/db/types';
 
-const DEBOUNCE_MS = 400;
-const timers = new Map<ClassId, ReturnType<typeof setTimeout>>();
-
-export function scheduleClassFlush(classId: ClassId): void {
-	const prev = timers.get(classId);
-	if (prev) clearTimeout(prev);
-	timers.set(
-		classId,
-		setTimeout(() => {
-			timers.delete(classId);
-			void flushClassNow(classId);
-		}, DEBOUNCE_MS)
-	);
-}
-
-export async function flushClassNow(classId: ClassId): Promise<void> {
-	const handle = await getFolderHandle(classId);
-	if (!handle) return;
-	setSaveStatus('saving');
-	try {
-		const snapshot = await loadClassSnapshot(classId);
-		await writePlannerFile(handle, snapshot);
-		await touchFolderSynced(classId);
-		setSaveStatus('saved');
-	} catch {
-		setSaveStatus('failed');
-		showToast('Could not save to folder — try again.');
-	}
+export function notifyClassDirty(classId: ClassId): void {
+	scheduleClassFlush(classId);
 }
 ```
+
+- [ ] **Step 2: `flush.ts`** — import `setSaveStatus` from `$lib/ui/saveStatus.svelte.ts`, `showToast` from `$lib/ui/toast.svelte.ts` (same debounced `flushClassNow` logic as before).
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/lib/persistence/flush.ts src/lib/stores/saveStatus.ts
+git add src/lib/persistence/notify.ts src/lib/persistence/flush.ts
 git commit -m "feat: debounced flush of class data to planner.json"
 ```
 
@@ -679,38 +630,55 @@ git commit -m "feat: add setup and link-class folder helpers"
 
 ---
 
-### Task 8: Hook `runMutation` persistence
+### Task 8: Application layer (use-cases)
 
 **Files:**
-- Modify: `src/lib/kit/runMutation.ts`
-- Modify: `src/lib/kit/runMutation.test.ts`
+- Create: `src/lib/application/classes.ts`
+- Create: `src/lib/application/lessons.ts`
+- Create: `src/lib/application/students.ts`
+- Create: `src/lib/application/attendance.ts`
+- Create: `src/lib/application/classes.test.ts` (optional: mock `notifyClassDirty`)
 
-- [ ] **Step 1: Add option and call flush scheduler**
+**Pattern:** each function delegates to the matching `*.repo.ts`, then calls `notifyClassDirty(classId)` when data for that class changed.
+
+- [ ] **Step 1: `classes.ts`**
 
 ```ts
-// Add import
-import { scheduleClassFlush } from '$lib/persistence/flush';
-import type { ClassId } from '$lib/db/types';
+import * as classesRepo from '$lib/repos/classes.repo';
+import { notifyClassDirty } from '$lib/persistence/notify';
+import { removeFolderHandle } from '$lib/persistence/meta';
+import type { ClassId, ClassRow } from '$lib/db/types';
 
-// Extend RunMutationOptions:
-persistClassIds?: ClassId | ClassId[];
+export async function createClass(input: Parameters<typeof classesRepo.createClass>[0]): Promise<ClassRow> {
+	const row = await classesRepo.createClass(input);
+	notifyClassDirty(row.id);
+	return row;
+}
 
-// After successful onSuccess, before return { ok: true }:
-if (options.persistClassIds) {
-	const ids = Array.isArray(options.persistClassIds)
-		? options.persistClassIds
-		: [options.persistClassIds];
-	for (const id of ids) scheduleClassFlush(id);
+export async function updateClass(id: ClassId, patch: Parameters<typeof classesRepo.updateClass>[1]): Promise<void> {
+	await classesRepo.updateClass(id, patch);
+	notifyClassDirty(id);
+}
+
+export async function deleteClassCascade(id: ClassId): Promise<void> {
+	await classesRepo.deleteClassCascade(id);
+	await removeFolderHandle(id); // untrack handle only; no disk delete
 }
 ```
 
-- [ ] **Step 2: Mock `scheduleClassFlush` in `runMutation.test.ts` and assert called when `persistClassIds` set**
+- [ ] **Step 2: `lessons.ts`** — wrap `createLesson`, `updateLesson`, `deleteLessonCascade`; resolve `classId` from input or `getLesson` after update; `notifyClassDirty(classId)`.
 
-- [ ] **Step 3: Run tests, commit**
+- [ ] **Step 3: `students.ts`** — wrap all mutators; `notifyClassDirty(classId)`.
+
+- [ ] **Step 4: `attendance.ts`** — wrap `setAbsent`; load lesson for `classId`, then notify.
+
+- [ ] **Step 5: `createClassAndLinkFolder`** (in `classes.ts` or `linkClass.ts`): `createClass` → `pickClassFolder` → `linkClassToPickedFolder` → on link failure `deleteClassCascade` + throw.
+
+- [ ] **Step 6: Run tests, commit**
 
 ```bash
-git add src/lib/kit/runMutation.ts src/lib/kit/runMutation.test.ts
-git commit -m "feat: schedule file flush after successful mutations"
+git add src/lib/application/
+git commit -m "feat: application layer with file sync after repo writes"
 ```
 
 ---
@@ -782,11 +750,11 @@ export const load: LayoutLoad = async ({ depends, url }) => {
 };
 ```
 
-- [ ] **Step 2: `onNewClass` in layout** — after name prompt, `pickClassFolder()`; if null return; `createClass` then `linkClassToPickedFolder(c.id, handle)`; on link failure toast and delete class from Dexie; else goto class.
+- [ ] **Step 2: `onNewClass`** — use `createClassAndLinkFolder` from application layer inside `runMutation`.
 
-- [ ] **Step 3: `onDeleteClass`** — after `deleteClassCascade`, `removeFolderHandle(routeClassId)` in `fn` or `onSuccess`.
+- [ ] **Step 3: `onDeleteClass`** — `application/deleteClassCascade` (meta removed inside application).
 
-- [ ] **Step 4: Save indicator in header** — subscribe `$saveStatus`, show muted “Saving…” / “Saved” / “Save failed”.
+- [ ] **Step 4: Save indicator in header** — `$derived(getSaveStatus())`, show muted “Saving…” / “Saved” / “Save failed”.
 
 - [ ] **Step 5: Commit**
 
@@ -797,30 +765,28 @@ git commit -m "feat: layout hydrate, setup redirect, create class with folder"
 
 ---
 
-### Task 11: Add `persistClassIds` to all mutation call sites
+### Task 11: Routes use application layer for writes
 
-**Files:** (add `persistClassIds: routeClassId` or appropriate `classId` / `params.classId`)
+**Files:** Replace `$lib/repos/*` imports with `$lib/application/*` for **mutations only** (loads keep repos).
 
-- `src/routes/+layout.svelte` — rename/update/delete/create flows
-- `src/routes/class/[classId]/+page.svelte` — 4 mutations
-- `src/routes/class/[classId]/students/+page.svelte` — 5 mutations
-- `src/routes/class/[classId]/SemesterMap.svelte` — 2 mutations
-- `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte` — 3 mutations
+- `src/routes/+layout.svelte` — `createClassAndLinkFolder`, `updateClass`, `deleteClassCascade`
+- `src/routes/class/[classId]/+page.svelte`
+- `src/routes/class/[classId]/students/+page.svelte`
+- `src/routes/class/[classId]/SemesterMap.svelte`
+- `src/routes/class/[classId]/lesson/[lessonId]/+page.svelte`
 
-- [ ] **Step 1: Grep and patch each `runMutation`**
+- [ ] **Step 1: Grep `from '$lib/repos/` in routes; switch mutators to application**
 
 Example:
 
 ```ts
+import { updateLesson } from '$lib/application/lessons';
+
 await runMutation({
 	fn: () => updateLesson(id, patch),
-	persistClassIds: params.classId,
-	invalidate: classLessonsLoadKey(params.classId),
-	// ...
+	invalidate: classLessonsLoadKey(params.classId)
 });
 ```
-
-For lesson page attendance, use parent `classId` from `params.classId`.
 
 - [ ] **Step 2: Run full test suite**
 
@@ -830,7 +796,25 @@ Run: `bun run test && bun run check`
 
 ```bash
 git add src/routes/
-git commit -m "feat: persist class files after all mutations"
+git commit -m "refactor: route mutations through application layer for file sync"
+```
+
+---
+
+### Task 11b: Refactor `/restore` to Zod
+
+**Files:**
+- Modify: `src/routes/restore/+page.svelte`
+
+- [ ] **Step 1: Remove inline `parseClassRow` / `parseBackup` helpers**
+
+- [ ] **Step 2: Use `parseLegacyBackup(json)` from `$lib/persistence/plannerFile.ts` (or `$lib/schemas/legacyBackup.ts`); map `ok: false` messages to existing UI strings.
+
+- [ ] **Step 3: Manual test with `lesson-planner-legacy-backup-*.json`; commit**
+
+```bash
+git add src/routes/restore/+page.svelte
+git commit -m "refactor: validate legacy backup with shared zod schemas"
 ```
 
 ---
@@ -882,19 +866,21 @@ git commit -m "docs: document per-class folder storage"
 | Spec requirement | Task |
 |------------------|------|
 | File as source of truth | 5, 10 (hydrate on load) |
-| Keep Dexie working store | All repos unchanged |
+| Keep Dexie working store | Repos unchanged; application wraps writes |
 | Per-class folder pick | 7, 9, 10 |
 | Remember handles | 2, 3 |
 | Debounced auto-save | 6, 8, 11 |
 | Export/setup for existing IDB | 9 |
-| planner.json v1 + version | 1 |
-| Folder required at create | 10 |
-| Delete = untrack only | 10 |
+| planner.json v1 + version | 1 (Zod) |
+| Folder required at create | 8, 10 |
+| Delete = untrack only | 8 (`deleteClassCascade`) |
 | Rename JSON only | 1 (class row in file) |
 | No external file watch | Non-goal (omitted) |
 | FSA browser gating | 7, 9, 10 |
 | Error messages | 1, 4, 6, 9 |
-| `/restore` unchanged | No task (explicit non-change) |
+| Legacy `/restore` | 11b (shared Zod) |
+| Runes UI state | 0 |
+| Application layer (A′) | 8, 11 |
 
 ## Execution handoff
 

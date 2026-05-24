@@ -158,14 +158,14 @@ No re-entry of lessons required; only folder picks (two picks for two classes).
 
 | Module | Responsibility |
 |--------|----------------|
-| `src/lib/persistence/plannerFile.ts` | Serialize / parse / validate `planner.json` v1 |
-| `src/lib/persistence/classFolder.ts` | FSA read/write, permission checks |
-| `src/lib/persistence/meta.ts` | Handle storage in IndexedDB |
-| `src/lib/persistence/flush.ts` | Debounced per-class flush queue |
-| `src/lib/persistence/hydrate.ts` | Load files → Dexie |
-| `src/lib/kit/runMutation.ts` | Hook: schedule flush after successful mutation |
+| `src/lib/schemas/*` | Zod schemas for rows, `planner.json`, legacy backup |
+| `src/lib/persistence/*` | FSA I/O, meta handles, hydrate, debounced flush |
+| `src/lib/application/*` | Use-cases: repo write → `notifyClassDirty(classId)` |
+| `src/lib/ui/*.svelte.ts` | Runes-based toast and save status (not `writable` stores) |
+| `src/lib/repos/*` | Dexie-only CRUD (unchanged) |
+| `src/lib/kit/runMutation.ts` | UI only: retry, invalidate, toast |
 
-Repos stay in `src/lib/repos/*`; no Dexie calls inside `src/lib/logic/*`.
+Repos stay in `src/lib/repos/*`; no Dexie calls inside `src/lib/logic/*`. Routes call **application** inside `runMutation`, not persistence directly.
 
 ## Error messages (user-facing)
 
