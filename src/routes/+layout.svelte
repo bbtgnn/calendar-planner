@@ -5,13 +5,19 @@
 	import { CLASSES_LIST_LOAD_KEY, classMetaLoadKey, classScopeLoadKeys } from '$lib/kit/loadKeys';
 	import { runMutation } from '$lib/kit/runMutation';
 	import { getToastMessage } from '$lib/ui/toast.svelte';
-	import { createClass, deleteClassCascade, updateClass } from '$lib/repos/classes.repo';
+	import {
+		createClassAndLinkFolder,
+		deleteClassCascade,
+		updateClass
+	} from '$lib/application/classes';
+	import { getSaveStatus } from '$lib/ui/saveStatus.svelte';
 	import { clearLastClassId } from '$lib/preferences/activeClass';
 
 	let { data, children } = $props();
 
 	const toast = $derived(getToastMessage());
 	const classes = $derived(data.classes);
+	const saveStatus = $derived(getSaveStatus());
 
 	const routeClassId = $derived(
 		typeof page.params.classId === 'string' ? page.params.classId : ''
@@ -21,7 +27,7 @@
 		const name = window.prompt('Class name?');
 		if (!name?.trim()) return;
 		await runMutation({
-			fn: () => createClass({ name: name.trim(), totalHoursTarget: 40 }),
+			fn: () => createClassAndLinkFolder({ name: name.trim(), totalHoursTarget: 40 }),
 			invalidate: CLASSES_LIST_LOAD_KEY,
 			errorToast: 'Could not create class.',
 			onSuccess: async (c) => {
@@ -85,7 +91,24 @@
 		{:else}
 			<button type="button" class="btn" onclick={onNewClass}>Create class</button>
 		{/if}
+		{#if saveStatus !== 'idle'}
+			<span class="save-status" class:saving={saveStatus === 'saving'} class:saved={saveStatus === 'saved'} class:failed={saveStatus === 'failed'}>
+				{#if saveStatus === 'saving'}
+					Saving…
+				{:else if saveStatus === 'saved'}
+					Saved
+				{:else if saveStatus === 'failed'}
+					Save failed
+				{/if}
+			</span>
+		{/if}
 	</header>
+
+	{#if data.fileStorageUnsupported}
+		<div class="banner" role="alert">
+			This browser does not support saving to folders. Use Chrome or Edge.
+		</div>
+	{/if}
 
 	{#if toast}
 		<div class="toast" role="status">{toast}</div>
@@ -138,6 +161,27 @@
 	.btn.danger {
 		border-color: #e08585;
 		color: #a32020;
+	}
+	.save-status {
+		font-size: 0.875rem;
+		color: #6b7280;
+	}
+	.save-status.saving {
+		color: #6b7280;
+	}
+	.save-status.saved {
+		color: #059669;
+	}
+	.save-status.failed {
+		color: #dc2626;
+	}
+	.banner {
+		margin: 0 1rem;
+		padding: 0.5rem 0.75rem;
+		background: #fef2f2;
+		border: 1px solid #fecaca;
+		border-radius: 6px;
+		color: #991b1b;
 	}
 	.main {
 		flex: 1;
