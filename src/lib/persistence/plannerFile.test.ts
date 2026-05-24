@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { PlannerFileV1 } from '$lib/schemas/plannerFile';
 import {
 	PLANNER_FILE_NAME,
 	PLANNER_FILE_VERSION,
@@ -8,7 +9,7 @@ import {
 } from './plannerFile';
 
 const validPlanner = {
-	version: PLANNER_FILE_VERSION,
+	version: 1 as const,
 	class: {
 		id: 'c1',
 		name: 'Math',
@@ -31,7 +32,7 @@ const validPlanner = {
 		}
 	],
 	absences: [{ id: 'a1', lessonId: 'l1', studentId: 's1' }]
-};
+} satisfies PlannerFileV1;
 
 const validBackup = {
 	classes: validPlanner.class,

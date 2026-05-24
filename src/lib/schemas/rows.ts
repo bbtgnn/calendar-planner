@@ -6,10 +6,10 @@ export const classRowSchema = z.object({
 	id: z.string().min(1),
 	name: z.string().min(1),
 	totalHoursTarget: z.number().finite(),
-	requiredStudentLessonHours: z.number().finite(),
+	requiredStudentLessonHours: z.number().finite().default(0),
 	createdAt: z.number().finite(),
-	semesterStart: z.string().nullable(),
-	semesterEnd: z.string().nullable()
+	semesterStart: z.string().nullable().default(null),
+	semesterEnd: z.string().nullable().default(null)
 });
 
 export const studentRowSchema = z.object({
@@ -23,7 +23,7 @@ export const lessonRowSchema = z.object({
 	classId: z.string().min(1),
 	date: z.string().min(1),
 	durationHours: z.number().finite(),
-	title: z.string(),
+	title: z.string().min(1),
 	done: z.boolean(),
 	sessionKind: lessonSessionKindSchema.default('class')
 });
