@@ -87,16 +87,21 @@
 		const data = parsed;
 
 		try {
-			await db.transaction('rw', db.classes, db.students, db.lessons, db.absences, async () => {
-				await db.absences.clear();
-				await db.students.clear();
-				await db.lessons.clear();
-				await db.classes.clear();
-				if (data.classes.length) await db.classes.bulkAdd(data.classes);
-				if (data.students.length) await db.students.bulkAdd(data.students);
-				if (data.lessons.length) await db.lessons.bulkAdd(data.lessons);
-				if (data.absences.length) await db.absences.bulkAdd(data.absences);
-			});
+			await db.transaction(
+				'rw',
+				[db.classes, db.students, db.lessons, db.absences, db.classFolders],
+				async () => {
+					await db.absences.clear();
+					await db.students.clear();
+					await db.lessons.clear();
+					await db.classes.clear();
+					await db.classFolders.clear();
+					if (data.classes.length) await db.classes.bulkAdd(data.classes);
+					if (data.students.length) await db.students.bulkAdd(data.students);
+					if (data.lessons.length) await db.lessons.bulkAdd(data.lessons);
+					if (data.absences.length) await db.absences.bulkAdd(data.absences);
+				}
+			);
 		} catch {
 			error = 'Restore failed — your existing data was not changed.';
 			restoring = false;

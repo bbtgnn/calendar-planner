@@ -2,6 +2,8 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { onMount } from 'svelte';
+	import { flushAllPending } from '$lib/persistence/flush';
 	import { CLASSES_LIST_LOAD_KEY, classMetaLoadKey, classScopeLoadKeys } from '$lib/kit/loadKeys';
 	import { runMutation } from '$lib/kit/runMutation';
 	import { getToastMessage } from '$lib/ui/toast.svelte';
@@ -14,6 +16,12 @@
 	import { clearLastClassId } from '$lib/preferences/activeClass';
 
 	let { data, children } = $props();
+
+	onMount(() => {
+		const onBeforeUnload = () => flushAllPending();
+		window.addEventListener('beforeunload', onBeforeUnload);
+		return () => window.removeEventListener('beforeunload', onBeforeUnload);
+	});
 
 	const toast = $derived(getToastMessage());
 	const classes = $derived(data.classes);

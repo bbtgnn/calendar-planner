@@ -22,7 +22,12 @@ export async function ensureReadWritePermission(
 export async function readPlannerFile(
 	handle: FileSystemDirectoryHandle
 ): Promise<{ ok: true; value: PlannerFileV1 } | { ok: false; message: string }> {
-	const fileHandle = await handle.getFileHandle(PLANNER_FILE_NAME);
+	let fileHandle: FileSystemFileHandle;
+	try {
+		fileHandle = await handle.getFileHandle(PLANNER_FILE_NAME);
+	} catch {
+		return { ok: false, message: 'Could not load planner.json — file may be damaged.' };
+	}
 	const file = await fileHandle.getFile();
 	const text = await file.text();
 	let json: unknown;

@@ -23,6 +23,20 @@ export function scheduleClassFlush(classId: ClassId): void {
 	);
 }
 
+export function flushPendingClass(classId: ClassId): void {
+	const existing = flushTimers.get(classId);
+	if (!existing) return;
+	clearTimeout(existing);
+	flushTimers.delete(classId);
+	void flushClassNow(classId);
+}
+
+export function flushAllPending(): void {
+	for (const classId of flushTimers.keys()) {
+		flushPendingClass(classId);
+	}
+}
+
 export async function flushClassNow(classId: ClassId): Promise<void> {
 	const handle = await getFolderHandle(classId);
 	if (!handle) return;
