@@ -48,3 +48,22 @@ export async function writePlannerFile(
 	await writable.write(serializePlannerFile(data));
 	await writable.close();
 }
+
+export async function listMarkdownFilesInSubdir(
+	root: FileSystemDirectoryHandle,
+	subdirName: string
+): Promise<{ fileName: string; text: string }[]> {
+	let subdir: FileSystemDirectoryHandle;
+	try {
+		subdir = await root.getDirectoryHandle(subdirName);
+	} catch {
+		return [];
+	}
+	const out: { fileName: string; text: string }[] = [];
+	for await (const [name, handle] of subdir.entries()) {
+		if (handle.kind !== 'file' || !name.endsWith('.md')) continue;
+		const file = await handle.getFile();
+		out.push({ fileName: name, text: await file.text() });
+	}
+	return out;
+}

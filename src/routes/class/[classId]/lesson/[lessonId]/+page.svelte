@@ -17,11 +17,14 @@
 	let date = $state('');
 	let durationHours = $state(0);
 	let title = $state('');
-	let done = $state(false);
 	let sessionKind = $state<LessonSessionKind>('class');
 
 	const formSeed = $derived(
-		`${data.lesson.id}|${data.lesson.date}|${data.lesson.durationHours}|${data.lesson.title}|${data.lesson.done}|${data.lesson.sessionKind}`
+		`${data.lesson.id}|${data.lesson.date}|${data.lesson.durationHours}|${data.lesson.title}|${data.lesson.sessionKind}`
+	);
+
+	const noteFolderLabel = $derived(
+		data.lesson.sessionKind === 'extra' ? 'extra/' : 'lezioni/'
 	);
 
 	const kindUi = $derived(lessonFormUi(sessionKind));
@@ -36,16 +39,14 @@
 		sessionKind = l.sessionKind;
 		const synced = syncEditorFormToKind(l.sessionKind, {
 			durationHours: l.durationHours,
-			done: l.done
+			done: false
 		});
 		durationHours = synced.durationHours;
-		done = synced.done;
 	});
 
 	$effect(() => {
-		const synced = syncEditorFormToKind(sessionKind, { durationHours, done });
+		const synced = syncEditorFormToKind(sessionKind, { durationHours, done: false });
 		if (synced.durationHours !== durationHours) durationHours = synced.durationHours;
-		if (synced.done !== done) done = synced.done;
 	});
 
 	const absentSeed = $derived(data.absentIds.join('\0'));
@@ -71,7 +72,6 @@
 					date,
 					durationHours: h,
 					title,
-					done,
 					sessionKind
 				}),
 			invalidate: [...lessonInvalidateKeys],
@@ -82,24 +82,20 @@
 	async function changeSessionKind(next: LessonSessionKind) {
 		const prev = sessionKind;
 		const prevDurationHours = durationHours;
-		const prevDone = done;
-		const nextFields = applyKindToForm(prev, next, { durationHours, done });
+		const nextFields = applyKindToForm(prev, next, { durationHours, done: false });
 		sessionKind = next;
 		durationHours = nextFields.durationHours;
-		done = nextFields.done;
 		await runMutation({
 			fn: () =>
 				updateLesson(data.lesson.id, {
 					sessionKind: next,
-					durationHours: nextFields.durationHours,
-					done: nextFields.done
+					durationHours: nextFields.durationHours
 				}),
 			invalidate: [...lessonInvalidateKeys],
 			errorToast: 'Could not update session kind.',
 			onError: () => {
 				sessionKind = prev;
 				durationHours = prevDurationHours;
-				done = prevDone;
 			}
 		});
 	}
@@ -160,23 +156,24 @@
 				<option value="skipped">Skipped</option>
 			</select>
 		</label>
-		<label class="check">
-			<input
-				type="checkbox"
-				bind:checked={done}
-				disabled={!kindUi.doneEditable}
-				title={kindUi.doneDisabledTitle}
-				onchange={() => {
-					if (!kindUi.doneEditable) {
-						done = false;
-						return;
-					}
-					void persistLessonMeta();
-				}}
-			/>
-			Done
-		</label>
 	</div>
+
+	<p class="done-readonly" title={kindUi.doneDisabledTitle}>
+		Done:
+		{#if data.lesson.sessionKind === 'skipped'}
+			<span class="muted">not applicable</span>
+		{:else if data.lesson.done}
+			<strong>Yes</strong> (note in {noteFolderLabel})
+			{#if data.lesson.hoursWarning}
+				<span class="warn">
+					— planner {data.lesson.hoursWarning.plannerHours}h, note {data.lesson.hoursWarning
+						.noteHours}h ({data.lesson.hoursWarning.fileName})</span
+				>
+			{/if}
+		{:else}
+			<span class="muted">no matching note for this date</span>
+		{/if}
+	</p>
 </section>
 
 <section class="card">
@@ -241,10 +238,12 @@
 		gap: 0.25rem;
 		font-size: 0.85rem;
 	}
-	.check {
-		flex-direction: row;
-		align-items: center;
-		gap: 0.5rem;
+	.done-readonly {
+		margin: 0.75rem 0 0;
+		font-size: 0.9rem;
+	}
+	.warn {
+		color: #8a4b00;
 	}
 	input[type='date'],
 	input[type='number'],

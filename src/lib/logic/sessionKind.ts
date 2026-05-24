@@ -35,10 +35,12 @@ export function lessonFormUi(kind: LessonSessionKind): LessonFormUi {
 		titleLabel: skipped ? 'Reason' : 'Title',
 		kindLabel: kind === 'class' ? 'Class' : kind === 'extra' ? 'Extra' : 'Skipped',
 		hoursEditable: !skipped,
-		doneEditable: !skipped,
+		doneEditable: false,
 		attendanceVisible: kind === 'class',
 		hoursDisabledTitle: skipped ? 'Skipped sessions always use 0 teacher hours.' : undefined,
-		doneDisabledTitle: skipped ? 'Skipped sessions cannot be marked done.' : undefined
+		doneDisabledTitle: skipped
+			? 'Skipped sessions cannot be marked done.'
+			: 'Done is set from lesson notes in lezioni/ or extra/ on disk.'
 	};
 }
 

@@ -3,6 +3,7 @@ import { setSaveStatus } from '$lib/ui/saveStatus.svelte';
 import { showToast } from '$lib/ui/toast.svelte';
 import { ensureReadWritePermission, writePlannerFile } from './classFolder';
 import { getFolderHandle, touchFolderSynced } from './meta';
+import { enrichClassLessonsFromFolder } from '$lib/lessonNotes/enrich';
 import { loadClassSnapshot } from './snapshot';
 
 const FLUSH_DEBOUNCE_MS = 400;
@@ -49,6 +50,10 @@ export async function flushClassNow(classId: ClassId): Promise<void> {
 			return;
 		}
 		const snapshot = await loadClassSnapshot(classId);
+		const enriched = await enrichClassLessonsFromFolder(classId, snapshot.lessons);
+		if (enriched.notesScanned) {
+			snapshot.lessons = enriched.lessons;
+		}
 		await writePlannerFile(handle, snapshot);
 		await touchFolderSynced(classId);
 		setSaveStatus('saved');

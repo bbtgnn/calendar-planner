@@ -1,0 +1,44 @@
+import type { ClassId, LessonRow } from '$lib/db/types';
+import { toUtcIsoCalendarDate } from '$lib/logic/semesterCalendar';
+import { ensureReadWritePermission } from '$lib/persistence/classFolder';
+import { getFolderHandle } from '$lib/persistence/meta';
+import { matchNotesToLessons } from './match';
+import { scanNotesSubdir } from './scanFolder';
+import type { EnrichedLesson, LessonNoteWarning } from './types';
+import { upcomingSessionDate } from './upcoming';
+
+export type ClassLessonsEnrichment = {
+	lessons: EnrichedLesson[];
+	warnings: LessonNoteWarning[];
+	upcomingDate: string | null;
+	notesScanned: boolean;
+};
+
+export async function enrichClassLessonsFromFolder(
+	classId: ClassId,
+	lessons: LessonRow[]
+): Promise<ClassLessonsEnrichment> {
+	const handle = await getFolderHandle(classId);
+	const todayIso = toUtcIsoCalendarDate(new Date());
+	if (!handle) {
+		return {
+			lessons: lessons.map((l) => ({ ...l })),
+			warnings: [],
+			upcomingDate: upcomingSessionDate(lessons, todayIso),
+			notesScanned: false
+		};
+	}
+
+	await ensureReadWritePermission(handle);
+	const [lezioni, extra] = await Promise.all([
+		scanNotesSubdir(handle, 'lezioni'),
+		scanNotesSubdir(handle, 'extra')
+	]);
+	const matched = matchNotesToLessons(lessons, lezioni.notes, extra.notes);
+	return {
+		lessons: matched.lessons,
+		warnings: [...lezioni.warnings, ...extra.warnings, ...matched.warnings],
+		upcomingDate: upcomingSessionDate(matched.lessons, todayIso),
+		notesScanned: true
+	};
+}

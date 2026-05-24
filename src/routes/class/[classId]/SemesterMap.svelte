@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { ClassRow, LessonRow } from '$lib/db/types';
+	import { kindDotsDoneByDate } from '$lib/lessonNotes/calendarDone';
+	import type { LessonNoteWarning } from '$lib/lessonNotes/types';
 	import { classMetaLoadKey } from '$lib/kit/loadKeys';
 	import { runMutation } from '$lib/kit/runMutation';
 	import { updateClass } from '$lib/application/classes';
@@ -17,10 +19,11 @@
 	type Props = {
 		classRow: ClassRow;
 		lessons: LessonRow[];
+		noteWarnings?: LessonNoteWarning[];
 		onSemesterSaved?: (next: ClassRow) => void;
 	};
 
-	let { classRow: klass, lessons, onSemesterSaved }: Props = $props();
+	let { classRow: klass, lessons, noteWarnings = [], onSemesterSaved }: Props = $props();
 
 	let startInput = $state('');
 	let endInput = $state('');
@@ -31,6 +34,14 @@
 	});
 
 	const kindsMap = $derived(uniqueKindsByDate(lessons));
+	const doneByDate = $derived(kindDotsDoneByDate(lessons));
+
+	function warningsForDate(isoDate: string): string {
+		return noteWarnings
+			.filter((w) => w.dateIso === isoDate)
+			.map((w) => w.message)
+			.join('\n');
+	}
 
 	async function saveSemester() {
 		const a = startInput.trim();
@@ -108,6 +119,7 @@
 			<span><i class="dot class"></i> Class</span>
 			<span><i class="dot extra"></i> Extra / 1:1</span>
 			<span><i class="dot skipped"></i> Skipped</span>
+			<span><i class="dot class dot-done"></i> Done (note on disk)</span>
 		</div>
 		<div class="strip" role="region" aria-label="Semester months">
 			{#each yearMonths as ym (ym)}
@@ -123,18 +135,25 @@
 								klass.semesterEnd &&
 								isDateInSemester(cell.isoDate, klass.semesterStart, klass.semesterEnd)}
 							{@const isToday = cell.isoDate === todayUtcIso}
+							{@const dateWarnings = warningsForDate(cell.isoDate)}
 							<div
 								class="cell"
 								class:semester-out={!inS}
 								class:out-month={!cell.inMonth && inS}
 								class:today={isToday}
 								aria-current={isToday ? 'date' : undefined}
+								title={dateWarnings || undefined}
 							>
 								<span class="dnum">{Number(cell.isoDate.slice(8))}</span>
 								{#if inS}
+									{@const doneFlags = doneByDate.get(cell.isoDate)}
 									<div class="dots">
 										{#each [...(kindsMap.get(cell.isoDate) ?? [])].sort() as k (k)}
-											<i class="dot {k}"></i>
+											<i
+												class="dot {k}"
+												class:dot-done={(k === 'class' && doneFlags?.class) ||
+													(k === 'extra' && doneFlags?.extra)}
+											></i>
 										{/each}
 									</div>
 								{/if}
@@ -309,6 +328,14 @@
 	i.dot.skipped {
 		background: var(--dot-skipped-bg);
 		border-color: var(--dot-skipped-border);
+	}
+	i.dot.class.dot-done {
+		background: var(--dot-class-border);
+		box-shadow: inset 0 0 0 1px #fff;
+	}
+	i.dot.extra.dot-done {
+		background: var(--dot-extra-border);
+		box-shadow: inset 0 0 0 1px #fff;
 	}
 	input[type='date'] {
 		padding: 0.35rem 0.5rem;

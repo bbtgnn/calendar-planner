@@ -28,11 +28,13 @@ describe('lessonFormUi', () => {
 		expect(lessonFormUi('skipped').kindLabel).toBe('Skipped');
 	});
 
-	it('disables hours and done for skipped', () => {
+	it('disables hours for skipped; done is always derived from notes', () => {
 		const skipped = lessonFormUi('skipped');
 		expect(skipped.hoursEditable).toBe(false);
 		expect(skipped.doneEditable).toBe(false);
 		expect(lessonFormUi('extra').hoursEditable).toBe(true);
+		expect(lessonFormUi('class').doneEditable).toBe(false);
+		expect(lessonFormUi('extra').doneEditable).toBe(false);
 	});
 
 	it('hides attendance for non-class kinds', () => {
@@ -115,7 +117,7 @@ describe('applyKindToForm', () => {
 	it('derives editor fields on kind change', () => {
 		expect(applyKindToForm('skipped', 'class', { durationHours: 2, done: true })).toEqual({
 			durationHours: 2,
-			done: true
+			done: false
 		});
 		expect(applyKindToForm('class', 'skipped', { durationHours: 2, done: true })).toEqual({
 			durationHours: 0,

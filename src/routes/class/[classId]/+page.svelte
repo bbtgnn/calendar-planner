@@ -2,7 +2,7 @@
 	import { resolve } from '$app/paths';
 	import type { PageData } from './$types';
 	import { classLessonsLoadKey, classMetaLoadKey } from '$lib/kit/loadKeys';
-	import { invalidateClassMeta, runMutation } from '$lib/kit/runMutation';
+	import { invalidateClassMeta, invalidateLoadKeys, runMutation } from '$lib/kit/runMutation';
 	import { createLesson, updateLesson, deleteLessonCascade } from '$lib/application/lessons';
 	import { updateClass } from '$lib/application/classes';
 	import { showToast } from '$lib/ui/toast.svelte';
@@ -12,7 +12,7 @@
 		syncAddFormToKind
 	} from '$lib/logic/sessionKind';
 	import { buildTeacherHourStatBoxes } from '$lib/logic/stats';
-	import type { ClassRow, LessonRow, LessonSessionKind } from '$lib/db/types';
+	import type { ClassRow, LessonSessionKind } from '$lib/db/types';
 	import { formatIsoDate } from '$lib/logic/dateFormat';
 	import SemesterMap from './SemesterMap.svelte';
 
@@ -132,12 +132,8 @@
 		newTitle = next.title;
 	}
 
-	async function toggleDone(lesson: LessonRow, done: boolean) {
-		await runMutation({
-			fn: () => updateLesson(lesson.id, { done }),
-			invalidate: classLessonsKey,
-			errorToast: 'Could not update lesson.'
-		});
+	async function refreshNotesFromFolder() {
+		await invalidateLoadKeys(classLessonsKey);
 	}
 
 	async function removeLesson(id: string) {
@@ -189,11 +185,32 @@
 	{#if dupDates}
 		<p class="hint">Some dates have more than one lesson — allowed.</p>
 	{/if}
+
+	{#if data.notesScanned}
+		<section class="notes-panel" aria-label="Lesson notes">
+			<div class="notes-panel__head">
+				<h2 class="notes-panel__title">Lesson notes</h2>
+				<button type="button" class="btn" onclick={() => void refreshNotesFromFolder()}>
+					Refresh from folder
+				</button>
+			</div>
+			{#if data.noteWarnings.length > 0}
+				<ul class="notes-warnings">
+					{#each data.noteWarnings as w (w.message)}
+						<li>{w.message}</li>
+					{/each}
+				</ul>
+			{:else}
+				<p class="muted notes-panel__ok">No warnings from lezioni/ or extra/ notes.</p>
+			{/if}
+		</section>
+	{/if}
 </section>
 
 <SemesterMap
 	classRow={classSnapshot}
 	lessons={data.lessons}
+	noteWarnings={data.noteWarnings}
 	onSemesterSaved={async (c) => {
 		classSnapshot = c;
 		await invalidateClassMeta(data.class.id);
@@ -253,7 +270,12 @@
 				</thead>
 				<tbody>
 					{#each data.lessons as lesson (lesson.id)}
-						<tr>
+						<tr
+							class:upcoming={data.upcomingDate !== null && lesson.date === data.upcomingDate}
+							aria-label={data.upcomingDate !== null && lesson.date === data.upcomingDate
+								? 'Upcoming session'
+								: undefined}
+						>
 							<td>
 								<span
 									class="badge"
@@ -267,14 +289,22 @@
 							<td>{formatIsoDate(lesson.date)}</td>
 							<td>{lesson.durationHours}</td>
 							<td>{lesson.title}</td>
-							<td>
-								<input
-									type="checkbox"
-									checked={lesson.done}
-									disabled={!lessonFormUi(lesson.sessionKind).doneEditable}
-									title={lessonFormUi(lesson.sessionKind).doneDisabledTitle}
-									onchange={(e) => toggleDone(lesson, (e.currentTarget as HTMLInputElement).checked)}
-								/>
+							<td class="done-cell">
+								{#if lesson.sessionKind === 'skipped'}
+									<span class="muted">—</span>
+								{:else if lesson.done}
+									<span class="done-yes" title="Note on disk">✓</span>
+									{#if lesson.hoursWarning}
+										<span
+											class="warn-icon"
+											title="Hours: planner {lesson.hoursWarning.plannerHours}h, note {lesson
+												.hoursWarning.noteHours}h"
+											>⚠</span
+										>
+									{/if}
+								{:else}
+									<span class="muted" title="No matching note for this date">—</span>
+								{/if}
 							</td>
 							<td class="actions">
 								<a
@@ -425,6 +455,48 @@
 	.hint {
 		color: #6a5b00;
 		font-size: 0.9rem;
+	}
+	.notes-panel {
+		margin-top: 1rem;
+		padding-top: 0.75rem;
+		border-top: 1px solid #e2e5eb;
+	}
+	.notes-panel__head {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		margin-bottom: 0.5rem;
+	}
+	.notes-panel__title {
+		margin: 0;
+		font-size: 0.95rem;
+		font-weight: 600;
+	}
+	.notes-panel__ok {
+		margin: 0;
+		font-size: 0.85rem;
+	}
+	.notes-warnings {
+		margin: 0;
+		padding-left: 1.25rem;
+		font-size: 0.85rem;
+		color: #8a4b00;
+	}
+	.done-cell {
+		white-space: nowrap;
+	}
+	.done-yes {
+		color: #16a34a;
+		font-weight: 700;
+	}
+	.warn-icon {
+		margin-left: 0.25rem;
+	}
+	tr.upcoming {
+		background: #f0f7ff;
+		box-shadow: inset 3px 0 0 #1967d2;
 	}
 	.muted {
 		color: #666;
