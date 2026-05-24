@@ -1,0 +1,35 @@
+import { z } from 'zod';
+
+export const lessonSessionKindSchema = z.enum(['class', 'extra', 'skipped']);
+
+export const classRowSchema = z.object({
+	id: z.string().min(1),
+	name: z.string().min(1),
+	totalHoursTarget: z.number().finite(),
+	requiredStudentLessonHours: z.number().finite(),
+	createdAt: z.number().finite(),
+	semesterStart: z.string().nullable(),
+	semesterEnd: z.string().nullable()
+});
+
+export const studentRowSchema = z.object({
+	id: z.string().min(1),
+	classId: z.string().min(1),
+	name: z.string().min(1)
+});
+
+export const lessonRowSchema = z.object({
+	id: z.string().min(1),
+	classId: z.string().min(1),
+	date: z.string().min(1),
+	durationHours: z.number().finite(),
+	title: z.string(),
+	done: z.boolean(),
+	sessionKind: lessonSessionKindSchema.default('class')
+});
+
+export const absenceRowSchema = z.object({
+	id: z.string().min(1),
+	lessonId: z.string().min(1),
+	studentId: z.string().min(1)
+});
