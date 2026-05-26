@@ -84,6 +84,14 @@
 <div class="app">
 	<header class="bar">
 		<strong class="brand">Lesson planner</strong>
+		<a
+			href="/overview"
+			class="nav-overview"
+			class:active={page.url.pathname === '/overview'}
+			data-sveltekit-preload-data="tap"
+		>
+			Overview
+		</a>
 		{#if classes.length > 0}
 			<label class="sr" for="class-switcher">Class</label>
 			<select id="class-switcher" class="select" value={routeClassId} onchange={onClassChange}>
@@ -151,6 +159,21 @@
 	}
 	.brand {
 		margin-right: auto;
+	}
+	.nav-overview {
+		text-decoration: none;
+		color: #334;
+		padding: 0.35rem 0.75rem;
+		border-radius: 6px;
+		font-size: 0.9rem;
+	}
+	.nav-overview:hover {
+		background: #e9ecf1;
+	}
+	.nav-overview.active {
+		background: #e8f0fe;
+		border: 1px solid #c9ced6;
+		font-weight: 600;
 	}
 	.select {
 		min-width: 12rem;
