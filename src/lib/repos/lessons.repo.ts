@@ -8,6 +8,20 @@ export async function listLessons(classId: ClassId): Promise<LessonRow[]> {
 	return rows;
 }
 
+export async function listLessonsForClassIds(
+	classIds: ClassId[]
+): Promise<Record<ClassId, LessonRow[]>> {
+	if (classIds.length === 0) return {};
+	const rows = await db.lessons.where('classId').anyOf(classIds).toArray();
+	rows.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+	const out: Record<ClassId, LessonRow[]> = {};
+	for (const id of classIds) out[id] = [];
+	for (const row of rows) {
+		(out[row.classId] ??= []).push(row);
+	}
+	return out;
+}
+
 export async function getLesson(id: LessonId): Promise<LessonRow | undefined> {
 	return db.lessons.get(id);
 }

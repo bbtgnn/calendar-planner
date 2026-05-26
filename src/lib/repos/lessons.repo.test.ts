@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '$lib/db/client';
 import { createClass } from './classes.repo';
-import { createLesson, updateLesson } from './lessons.repo';
+import { createLesson, listLessonsForClassIds, updateLesson } from './lessons.repo';
 
 beforeEach(async () => {
 	await db.delete();
@@ -90,6 +90,21 @@ describe('lessons.repo', () => {
 		expect(row?.durationHours).toBe(0);
 		const absenceCount = await db.absences.where('lessonId').equals(lesson.id).count();
 		expect(absenceCount).toBe(0);
+	});
+
+	it('listLessonsForClassIds returns lessons grouped by classId', async () => {
+		const c1 = await createClass({ name: 'One', totalHoursTarget: 10 });
+		const c2 = await createClass({ name: 'Two', totalHoursTarget: 10 });
+		await createLesson({ classId: c1.id, date: '2026-04-01', durationHours: 2, title: 'A' });
+		await createLesson({ classId: c2.id, date: '2026-04-02', durationHours: 2, title: 'B' });
+		const map = await listLessonsForClassIds([c1.id, c2.id]);
+		expect(map[c1.id]).toHaveLength(1);
+		expect(map[c2.id]).toHaveLength(1);
+		expect(map[c1.id]![0]!.date).toBe('2026-04-01');
+	});
+
+	it('listLessonsForClassIds returns empty object for empty ids', async () => {
+		expect(await listLessonsForClassIds([])).toEqual({});
 	});
 
 	it('updateLesson keeps skipped duration at 0 even if duration patch is provided', async () => {
