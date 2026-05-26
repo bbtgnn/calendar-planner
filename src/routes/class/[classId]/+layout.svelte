@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { setLastClassId } from '$lib/preferences/activeClass';
-	import { ensureReadWritePermission } from '$lib/persistence/classFolder';
+	import { ensureReadWritePermission, hasFolderPermission } from '$lib/persistence/classFolder';
 	import { getFolderHandle, putFolderHandle } from '$lib/persistence/meta';
 	import { pickClassFolder } from '$lib/persistence/linkClass';
 	import { showToast } from '$lib/ui/toast.svelte';
@@ -31,7 +31,7 @@
 				needsReconnect = false;
 				return;
 			}
-			needsReconnect = !(await ensureReadWritePermission(handle));
+			needsReconnect = !(await hasFolderPermission(handle, 'readwrite'));
 		})();
 
 		return () => {

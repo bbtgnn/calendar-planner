@@ -1,6 +1,6 @@
 import type { ClassId, LessonRow } from '$lib/db/types';
 import { toUtcIsoCalendarDate } from '$lib/logic/semesterCalendar';
-import { ensureReadWritePermission } from '$lib/persistence/classFolder';
+import { hasFolderPermission } from '$lib/persistence/classFolder';
 import { getFolderHandle } from '$lib/persistence/meta';
 import { matchNotesToLessons } from './match';
 import { scanNotesSubdir } from './scanFolder';
@@ -29,7 +29,14 @@ export async function enrichClassLessonsFromFolder(
 		};
 	}
 
-	await ensureReadWritePermission(handle);
+	if (!(await hasFolderPermission(handle, 'read'))) {
+		return {
+			lessons: lessons.map((l) => ({ ...l })),
+			warnings: [],
+			upcomingDate: upcomingSessionDate(lessons, todayIso),
+			notesScanned: false
+		};
+	}
 	const [lezioni, extra] = await Promise.all([
 		scanNotesSubdir(handle, 'lezioni'),
 		scanNotesSubdir(handle, 'extra')

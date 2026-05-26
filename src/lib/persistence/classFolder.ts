@@ -5,18 +5,54 @@ export function isFileStorageSupported(): boolean {
 	return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 }
 
+export type FolderPermissionMode = 'read' | 'readwrite';
+
 type PermissionDirectoryHandle = FileSystemDirectoryHandle & {
-	queryPermission(descriptor: { mode: 'readwrite' }): Promise<PermissionState>;
-	requestPermission(descriptor: { mode: 'readwrite' }): Promise<PermissionState>;
+	queryPermission(descriptor: { mode: FolderPermissionMode }): Promise<PermissionState>;
+	requestPermission(descriptor: { mode: FolderPermissionMode }): Promise<PermissionState>;
 };
 
+export async function queryFolderPermission(
+	handle: FileSystemDirectoryHandle,
+	mode: FolderPermissionMode
+): Promise<PermissionState> {
+	const permHandle = handle as PermissionDirectoryHandle;
+	return permHandle.queryPermission({ mode });
+}
+
+/** Query only — safe during route load / effects (never calls requestPermission). */
+export async function hasFolderPermission(
+	handle: FileSystemDirectoryHandle,
+	mode: FolderPermissionMode
+): Promise<boolean> {
+	return (await queryFolderPermission(handle, mode)) === 'granted';
+}
+
+async function ensurePermission(
+	handle: FileSystemDirectoryHandle,
+	mode: FolderPermissionMode
+): Promise<boolean> {
+	const opts = { mode };
+	const permHandle = handle as PermissionDirectoryHandle;
+	if ((await permHandle.queryPermission(opts)) === 'granted') return true;
+	try {
+		return (await permHandle.requestPermission(opts)) === 'granted';
+	} catch (err) {
+		if (err instanceof DOMException && err.name === 'SecurityError') return false;
+		throw err;
+	}
+}
+
+/** Requires a user gesture when permission is not already granted. */
+export async function ensureReadPermission(handle: FileSystemDirectoryHandle): Promise<boolean> {
+	return ensurePermission(handle, 'read');
+}
+
+/** Requires a user gesture when permission is not already granted. */
 export async function ensureReadWritePermission(
 	handle: FileSystemDirectoryHandle
 ): Promise<boolean> {
-	const opts = { mode: 'readwrite' as const };
-	const permHandle = handle as PermissionDirectoryHandle;
-	if ((await permHandle.queryPermission(opts)) === 'granted') return true;
-	return (await permHandle.requestPermission(opts)) === 'granted';
+	return ensurePermission(handle, 'readwrite');
 }
 
 export async function readPlannerFile(

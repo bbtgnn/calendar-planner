@@ -1,7 +1,7 @@
 import { db } from '$lib/db/client';
 import type { ClassId } from '$lib/db/types';
 import type { PlannerFileV1 } from '$lib/schemas/plannerFile';
-import { ensureReadWritePermission, readPlannerFile } from './classFolder';
+import { hasFolderPermission, readPlannerFile } from './classFolder';
 import { getFolderHandle, listFolderClassIds } from './meta';
 
 export type HydrateClassError = { classId: ClassId; message: string };
@@ -42,7 +42,7 @@ export async function hydrateAllLinkedClassesFromFiles(): Promise<HydrateResult>
 			errors.push({ classId, message: `Missing folder handle for class ${classId}` });
 			continue;
 		}
-		if (!(await ensureReadWritePermission(handle))) {
+		if (!(await hasFolderPermission(handle, 'readwrite'))) {
 			errors.push({
 				classId,
 				message: 'Could not access folder — reconnect to continue saving.'

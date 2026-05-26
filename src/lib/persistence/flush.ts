@@ -1,7 +1,7 @@
 import type { ClassId } from '$lib/db/types';
 import { setSaveStatus } from '$lib/ui/saveStatus.svelte';
 import { showToast } from '$lib/ui/toast.svelte';
-import { ensureReadWritePermission, writePlannerFile } from './classFolder';
+import { hasFolderPermission, writePlannerFile } from './classFolder';
 import { getFolderHandle, touchFolderSynced } from './meta';
 import { enrichClassLessonsFromFolder } from '$lib/lessonNotes/enrich';
 import { loadClassSnapshot } from './snapshot';
@@ -44,7 +44,7 @@ export async function flushClassNow(classId: ClassId): Promise<void> {
 
 	setSaveStatus('saving');
 	try {
-		if (!(await ensureReadWritePermission(handle))) {
+		if (!(await hasFolderPermission(handle, 'readwrite'))) {
 			setSaveStatus('failed');
 			showToast('Could not save to folder — try again.');
 			return;
