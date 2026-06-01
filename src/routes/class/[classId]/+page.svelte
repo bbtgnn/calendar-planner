@@ -12,9 +12,21 @@
 		syncAddFormToKind
 	} from '$lib/logic/sessionKind';
 	import { buildTeacherHourStatBoxes } from '$lib/logic/stats';
-	import type { ClassRow, LessonSessionKind } from '$lib/db/types';
+	import type { ClassRow, LessonId, LessonSessionKind } from '$lib/db/types';
+	import { doneColumnTooltip } from '$lib/lessonNotes/doneTooltip';
+	import {
+		loadScreenshotObjectUrl,
+		revokeScreenshotObjectUrl
+	} from '$lib/lessonNotes/loadScreenshot';
+	import type { ScreenshotRef } from '$lib/lessonNotes/types';
 	import { formatIsoDate } from '$lib/logic/dateFormat';
 	import SemesterMap from './SemesterMap.svelte';
+
+	const COLS = 6;
+	let expanded = $state<Set<LessonId>>(new Set());
+	let imageByLesson = $state<Record<string, { url?: string; error?: string; loading?: boolean }>>(
+		{}
+	);
 
 	let { data }: { data: PageData } = $props();
 
@@ -144,6 +156,40 @@
 			errorToast: 'Could not delete lesson.'
 		});
 	}
+
+	function toggleExpand(lesson: (typeof data.lessons)[0]) {
+		if (!lesson.screenshotRef) return;
+		const next = new Set(expanded);
+		if (next.has(lesson.id)) {
+			next.delete(lesson.id);
+			const prev = imageByLesson[lesson.id]?.url;
+			revokeScreenshotObjectUrl(prev);
+			const { [lesson.id]: _, ...rest } = imageByLesson;
+			imageByLesson = rest;
+		} else {
+			next.add(lesson.id);
+			void ensureScreenshotLoaded(lesson.id, lesson.screenshotRef);
+		}
+		expanded = next;
+	}
+
+	async function ensureScreenshotLoaded(lessonId: LessonId, ref: ScreenshotRef) {
+		if (imageByLesson[lessonId]?.url || imageByLesson[lessonId]?.loading) return;
+		imageByLesson = { ...imageByLesson, [lessonId]: { loading: true } };
+		const result = await loadScreenshotObjectUrl(data.class.id, ref);
+		imageByLesson = {
+			...imageByLesson,
+			[lessonId]: result.ok ? { url: result.url } : { error: result.message }
+		};
+	}
+
+	$effect(() => {
+		return () => {
+			for (const entry of Object.values(imageByLesson)) {
+				revokeScreenshotObjectUrl(entry?.url);
+			}
+		};
+	});
 </script>
 
 <section class="card">
@@ -270,11 +316,16 @@
 				</thead>
 				<tbody>
 					{#each data.lessons as lesson (lesson.id)}
+						{@const isExpandable = !!lesson.screenshotRef}
 						<tr
 							class:upcoming={data.upcomingDate !== null && lesson.date === data.upcomingDate}
+							class:row-expandable={isExpandable}
+							class:row-expanded={expanded.has(lesson.id)}
+							aria-expanded={isExpandable ? expanded.has(lesson.id) : undefined}
 							aria-label={data.upcomingDate !== null && lesson.date === data.upcomingDate
 								? 'Upcoming session'
 								: undefined}
+							onclick={() => isExpandable && toggleExpand(lesson)}
 						>
 							<td>
 								<span
@@ -293,7 +344,7 @@
 								{#if lesson.sessionKind === 'skipped'}
 									<span class="muted">—</span>
 								{:else if lesson.done}
-									<span class="done-yes" title="Note on disk">✓</span>
+									<span class="done-yes" title="Note and screenshot on disk">✓</span>
 									{#if lesson.hoursWarning}
 										<span
 											class="warn-icon"
@@ -303,10 +354,13 @@
 										>
 									{/if}
 								{:else}
-									<span class="muted" title="No matching note for this date">—</span>
+									<span class="muted">—</span>
+									{#if lesson.screenshotMissing}
+										<span class="warn-icon" title={doneColumnTooltip(lesson)}>⚠</span>
+									{/if}
 								{/if}
 							</td>
-							<td class="actions">
+							<td class="actions" onclick={(e) => e.stopPropagation()}>
 								<a
 									class="link"
 									href={resolve('/class/[classId]/lesson/[lessonId]', {
@@ -321,6 +375,22 @@
 								</button>
 							</td>
 						</tr>
+						{#if expanded.has(lesson.id)}
+							<tr class="screenshot-detail">
+								<td colspan={COLS}>
+									{#if imageByLesson[lesson.id]?.loading}
+										<p class="muted">Loading…</p>
+									{:else if imageByLesson[lesson.id]?.error}
+										<p class="warn">{imageByLesson[lesson.id].error}</p>
+									{:else if imageByLesson[lesson.id]?.url}
+										<img
+											src={imageByLesson[lesson.id].url}
+											alt="Screenshot for {lesson.title}"
+										/>
+									{/if}
+								</td>
+							</tr>
+						{/if}
 					{/each}
 				</tbody>
 			</table>
@@ -494,9 +564,20 @@
 	.warn-icon {
 		margin-left: 0.25rem;
 	}
+	tr.row-expandable {
+		cursor: pointer;
+	}
+	tr.row-expandable:hover {
+		background: #f6f8fb;
+	}
 	tr.upcoming {
 		background: #f0f7ff;
 		box-shadow: inset 3px 0 0 #1967d2;
+	}
+	.screenshot-detail img {
+		max-width: 100%;
+		max-height: 70vh;
+		display: block;
 	}
 	.muted {
 		color: #666;
