@@ -1,6 +1,17 @@
 import type { LessonRow } from '$lib/db/types';
 import type { EnrichedLesson, LessonNoteWarning, NoteFolder, ScannedNote } from './types';
 import { folderForSessionKind } from './types';
+import { screenshotFileNameForNote } from './screenshot';
+
+export type ScreenshotIndex = {
+	lezioni: Set<string>;
+	extra: Set<string>;
+};
+
+export type MatchContext = {
+	todayIso: string;
+	screenshots: ScreenshotIndex;
+};
 
 export type MatchResult = {
 	lessons: EnrichedLesson[];
@@ -56,10 +67,15 @@ function orphanWarnings(
 	return out;
 }
 
+function isPastSession(dateIso: string, todayIso: string): boolean {
+	return dateIso <= todayIso;
+}
+
 export function matchNotesToLessons(
 	lessons: LessonRow[],
 	lezioniNotes: ScannedNote[],
-	extraNotes: ScannedNote[]
+	extraNotes: ScannedNote[],
+	ctx: MatchContext
 ): MatchResult {
 	const lezioniByDate = groupByDate(lezioniNotes);
 	const extraByDate = groupByDate(extraNotes);
@@ -82,12 +98,31 @@ export function matchNotesToLessons(
 
 		const byDate = folder === 'lezioni' ? lezioniByDate : extraByDate;
 		const notes = byDate.get(lesson.date) ?? [];
+		const past = isPastSession(lesson.date, ctx.todayIso);
+
 		if (notes.length === 0) {
+			if (past) {
+				return { ...lesson, done: false, screenshotMissing: true };
+			}
 			return { ...lesson, done: false };
 		}
 
 		const note = notes[0];
-		const row: EnrichedLesson = { ...lesson, done: true };
+		const pngName = screenshotFileNameForNote(note.fileName);
+		const pngSet = folder === 'lezioni' ? ctx.screenshots.lezioni : ctx.screenshots.extra;
+		const hasPng = pngName !== null && pngSet.has(pngName);
+
+		const row: EnrichedLesson = {
+			...lesson,
+			done: past && hasPng,
+			matchedNote: { folder, fileName: note.fileName }
+		};
+		if (hasPng && pngName) {
+			row.screenshotRef = { folder, fileName: pngName };
+		}
+		if (past && !hasPng) {
+			row.screenshotMissing = true;
+		}
 		if (note.durationHours !== lesson.durationHours) {
 			row.hoursWarning = {
 				plannerHours: lesson.durationHours,

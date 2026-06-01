@@ -29,8 +29,21 @@ export type LessonHoursWarning = {
 	folder: NoteFolder;
 };
 
+export type ScreenshotRef = {
+	folder: NoteFolder;
+	fileName: string;
+};
+
+export type MatchedNoteRef = {
+	folder: NoteFolder;
+	fileName: string;
+};
+
 export type EnrichedLesson = LessonRow & {
 	hoursWarning?: LessonHoursWarning;
+	screenshotMissing?: boolean;
+	screenshotRef?: ScreenshotRef;
+	matchedNote?: MatchedNoteRef;
 };
 
 export function folderForSessionKind(kind: LessonSessionKind): NoteFolder | null {
