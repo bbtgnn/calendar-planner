@@ -1,4 +1,4 @@
-import { listMarkdownFilesInSubdir } from '$lib/persistence/classFolder';
+import { listMarkdownFilesInSubdir, listPngFileNamesInSubdir } from '$lib/persistence/classFolder';
 import { parseLessonNoteMarkdown } from './parseFrontmatter';
 import type { LessonNoteWarning, NoteFolder, ScannedNote } from './types';
 
@@ -26,4 +26,11 @@ export async function scanNotesSubdir(
 		});
 	}
 	return { notes, warnings };
+}
+
+export async function scanScreenshotsSubdir(
+	root: FileSystemDirectoryHandle,
+	folder: NoteFolder
+): Promise<Set<string>> {
+	return listPngFileNamesInSubdir(root, folder);
 }

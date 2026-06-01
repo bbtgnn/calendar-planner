@@ -103,3 +103,22 @@ export async function listMarkdownFilesInSubdir(
 	}
 	return out;
 }
+
+export async function listPngFileNamesInSubdir(
+	root: FileSystemDirectoryHandle,
+	subdirName: string
+): Promise<Set<string>> {
+	let subdir: FileSystemDirectoryHandle;
+	try {
+		subdir = await root.getDirectoryHandle(subdirName);
+	} catch {
+		return new Set();
+	}
+	const names = new Set<string>();
+	for await (const [name, handle] of subdir.entries()) {
+		if (handle.kind !== 'file') continue;
+		if (!name.toLowerCase().endsWith('.png')) continue;
+		names.add(name);
+	}
+	return names;
+}
