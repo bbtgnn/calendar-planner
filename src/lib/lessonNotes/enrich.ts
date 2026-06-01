@@ -3,7 +3,7 @@ import { toUtcIsoCalendarDate } from '$lib/logic/semesterCalendar';
 import { hasFolderPermission } from '$lib/persistence/classFolder';
 import { getFolderHandle } from '$lib/persistence/meta';
 import { matchNotesToLessons } from './match';
-import { scanNotesSubdir } from './scanFolder';
+import { scanNotesSubdir, scanScreenshotsSubdir } from './scanFolder';
 import type { EnrichedLesson, LessonNoteWarning } from './types';
 import { upcomingSessionDate } from './upcoming';
 
@@ -37,11 +37,16 @@ export async function enrichClassLessonsFromFolder(
 			notesScanned: false
 		};
 	}
-	const [lezioni, extra] = await Promise.all([
+	const [lezioni, extra, lezioniPng, extraPng] = await Promise.all([
 		scanNotesSubdir(handle, 'lezioni'),
-		scanNotesSubdir(handle, 'extra')
+		scanNotesSubdir(handle, 'extra'),
+		scanScreenshotsSubdir(handle, 'lezioni'),
+		scanScreenshotsSubdir(handle, 'extra')
 	]);
-	const matched = matchNotesToLessons(lessons, lezioni.notes, extra.notes);
+	const matched = matchNotesToLessons(lessons, lezioni.notes, extra.notes, {
+		todayIso,
+		screenshots: { lezioni: lezioniPng, extra: extraPng }
+	});
 	return {
 		lessons: matched.lessons,
 		warnings: [...lezioni.warnings, ...extra.warnings, ...matched.warnings],
