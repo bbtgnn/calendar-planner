@@ -11,6 +11,7 @@
 	import { setAbsent } from '$lib/application/attendance';
 	import { showToast } from '$lib/ui/toast.svelte';
 	import type { LessonSessionKind } from '$lib/db/types';
+	import { doneColumnTooltip } from '$lib/lessonNotes/doneTooltip';
 
 	let { data }: { data: PageData } = $props();
 
@@ -163,15 +164,17 @@
 		{#if data.lesson.sessionKind === 'skipped'}
 			<span class="muted">not applicable</span>
 		{:else if data.lesson.done}
-			<strong>Yes</strong> (note in {noteFolderLabel})
+			<strong>Yes</strong> (note and screenshot in {noteFolderLabel})
 			{#if data.lesson.hoursWarning}
 				<span class="warn">
 					— planner {data.lesson.hoursWarning.plannerHours}h, note {data.lesson.hoursWarning
 						.noteHours}h ({data.lesson.hoursWarning.fileName})</span
 				>
 			{/if}
+		{:else if data.lesson.screenshotMissing}
+			<span class="muted">{doneColumnTooltip(data.lesson)}</span>
 		{:else}
-			<span class="muted">no matching note for this date</span>
+			<span class="muted">No matching note for this date</span>
 		{/if}
 	</p>
 </section>
