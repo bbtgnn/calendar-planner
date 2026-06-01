@@ -145,6 +145,11 @@
 	}
 
 	async function refreshNotesFromFolder() {
+		for (const entry of Object.values(imageByLesson)) {
+			revokeScreenshotObjectUrl(entry?.url);
+		}
+		expanded = new Set();
+		imageByLesson = {};
 		await invalidateLoadKeys(classLessonsKey);
 	}
 
@@ -375,7 +380,7 @@
 								</button>
 							</td>
 						</tr>
-						{#if expanded.has(lesson.id)}
+						{#if expanded.has(lesson.id) && lesson.screenshotRef}
 							<tr class="screenshot-detail">
 								<td colspan={COLS}>
 									{#if imageByLesson[lesson.id]?.loading}

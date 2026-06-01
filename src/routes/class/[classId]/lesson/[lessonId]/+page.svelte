@@ -173,6 +173,8 @@
 			{/if}
 		{:else if data.lesson.screenshotMissing}
 			<span class="muted">{doneColumnTooltip(data.lesson)}</span>
+		{:else if data.lesson.matchedNote || data.lesson.screenshotRef}
+			<span class="muted">Scheduled (not yet counted as done)</span>
 		{:else}
 			<span class="muted">No matching note for this date</span>
 		{/if}

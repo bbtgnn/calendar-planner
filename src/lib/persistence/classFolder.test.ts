@@ -103,7 +103,7 @@ describe('listPngFileNamesInSubdir', () => {
 			extra: mockDir([['02-screen.PNG', mockFile('02-screen.PNG')]])
 		});
 		await expect(listPngFileNamesInSubdir(root, 'extra')).resolves.toEqual(
-			new Set(['02-screen.PNG'])
+			new Set(['02-screen.png'])
 		);
 	});
 

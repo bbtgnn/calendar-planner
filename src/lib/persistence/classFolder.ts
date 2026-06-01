@@ -118,7 +118,7 @@ export async function listPngFileNamesInSubdir(
 	for await (const [name, handle] of subdir.entries()) {
 		if (handle.kind !== 'file') continue;
 		if (!name.toLowerCase().endsWith('.png')) continue;
-		names.add(name);
+		names.add(name.toLowerCase());
 	}
 	return names;
 }
