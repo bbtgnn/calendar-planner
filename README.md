@@ -12,7 +12,11 @@ Saving to folders uses the [File System Access API](https://developer.mozilla.or
 
 - **One folder per class** — when you create a class (or link an existing one), you pick any directory on your machine. Paths can differ per class; there is no shared root folder.
 - **`planner.json`** — each class folder contains a versioned JSON file with the class row, students, lessons, and absences. You can version it in git, copy folders between machines, or inspect backups as plain text.
-- **`lezioni/` and `extra/`** — markdown lesson notes with YAML frontmatter (`data: DD/MM/YYYY`, `durata: hours`). Class sessions are **done** when a matching note exists for that date in `lezioni/`; extra / 1:1 sessions use `extra/`. Hour differences vs the planner show as warnings only. Use **Refresh from folder** on the class page after editing notes outside the app.
+- **`lezioni/` and `extra/`** — markdown lesson notes with YAML frontmatter (`data: DD/MM/YYYY`, `durata: hours`) and paired slide screenshots. Class sessions use `lezioni/`; extra / 1:1 sessions use `extra/`. For a note `09.md`, place the screenshot as `09-screen.png` in the same folder. Use **Refresh from folder** on the class page after editing files outside the app.
+  - **Done** — past class and extra sessions are **done** only when a note exists for the session date **and** the paired `{stem}-screen.png` is present. Future sessions are never marked done.
+  - **Missing screenshot** — past non-skipped sessions without the paired PNG show ⚠ in the **Done** column on the sessions list.
+  - **Preview** — click a session row to toggle an inline PNG preview below when the screenshot file exists.
+  Hour differences between note duration and the planner show as separate warnings only.
 - **IndexedDB** — the app remembers which folder belongs to each class and holds a rebuildable working copy while you work. Deleting a class in the app removes its database rows and stored folder handle only; it does **not** delete files on disk.
 
 ### Auto-save
