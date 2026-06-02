@@ -18,7 +18,7 @@ export async function loadClassSnapshot(classId: ClassId): Promise<PlannerFileV1
 		version: PLANNER_FILE_VERSION,
 		class: classRow,
 		students,
-		lessons,
+		lessons: lessons.map(({ done: _, ...lesson }) => lesson),
 		absences
 	};
 }

@@ -24,7 +24,8 @@ export function parsePlannerFile(json: unknown): ParseResult {
 }
 
 export function serializePlannerFile(data: PlannerFileV1): string {
-	return JSON.stringify(data, null, 2);
+	const clean = plannerFileSchema.parse(data);
+	return JSON.stringify(clean, null, 2);
 }
 
 export function parseLegacyBackup(json: unknown): LegacyParseResult {

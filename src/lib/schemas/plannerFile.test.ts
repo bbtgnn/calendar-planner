@@ -13,15 +13,15 @@ const classRow = {
 };
 
 const studentRow = { id: 's1', classId: 'c1', name: 'Alice' };
-const lessonRow = {
+const persistedLessonRow = {
 	id: 'l1',
 	classId: 'c1',
 	date: '2026-01-01',
 	durationHours: 1,
 	title: 'Intro',
-	done: false,
 	sessionKind: 'class' as const
 };
+const lessonRow = { ...persistedLessonRow, done: false };
 const absenceRow = { id: 'a1', lessonId: 'l1', studentId: 's1' };
 
 describe('plannerFileSchema', () => {
@@ -30,10 +30,24 @@ describe('plannerFileSchema', () => {
 			version: 1,
 			class: classRow,
 			students: [studentRow],
-			lessons: [lessonRow],
+			lessons: [persistedLessonRow],
 			absences: [absenceRow]
 		});
 		expect(result.success).toBe(true);
+	});
+
+	it('strips done from lessons on parse', () => {
+		const result = plannerFileSchema.safeParse({
+			version: 1,
+			class: classRow,
+			students: [],
+			lessons: [{ ...persistedLessonRow, done: true }],
+			absences: []
+		});
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.lessons[0]).toEqual(persistedLessonRow);
+		}
 	});
 
 	it('rejects wrong version', () => {
@@ -66,7 +80,7 @@ describe('plannerFileSchema', () => {
 			version: 1,
 			class: classRow,
 			students: [],
-			lessons: [{ ...lessonRow, classId: 'other' }],
+			lessons: [{ ...persistedLessonRow, classId: 'other' }],
 			absences: []
 		});
 		expect(result.success).toBe(false);
@@ -80,7 +94,7 @@ describe('plannerFileSchema', () => {
 			version: 1,
 			class: classRow,
 			students: [studentRow],
-			lessons: [lessonRow],
+			lessons: [persistedLessonRow],
 			absences: [{ id: 'a1', lessonId: 'missing', studentId: 's1' }]
 		});
 		expect(result.success).toBe(false);
@@ -90,7 +104,7 @@ describe('plannerFileSchema', () => {
 	});
 
 	it('defaults sessionKind to class', () => {
-		const { sessionKind: _, ...lessonWithoutKind } = lessonRow;
+		const { sessionKind: _, ...lessonWithoutKind } = persistedLessonRow;
 		const result = plannerFileSchema.safeParse({
 			version: 1,
 			class: classRow,

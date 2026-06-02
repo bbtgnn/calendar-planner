@@ -24,7 +24,9 @@ export async function hydrateClassFromFile(classId: ClassId, file: PlannerFileV1
 
 		await db.classes.add(file.class);
 		if (file.students.length) await db.students.bulkAdd(file.students);
-		if (file.lessons.length) await db.lessons.bulkAdd(file.lessons);
+		if (file.lessons.length) {
+			await db.lessons.bulkAdd(file.lessons.map((lesson) => ({ ...lesson, done: false })));
+		}
 		if (file.absences.length) await db.absences.bulkAdd(file.absences);
 	});
 }

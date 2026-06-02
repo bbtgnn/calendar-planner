@@ -27,7 +27,16 @@ describe('loadClassSnapshot', () => {
 			version: PLANNER_FILE_VERSION,
 			class: classRow,
 			students: [],
-			lessons: [lesson],
+			lessons: [
+				{
+					id: lesson.id,
+					classId: lesson.classId,
+					date: lesson.date,
+					durationHours: lesson.durationHours,
+					title: lesson.title,
+					sessionKind: lesson.sessionKind
+				}
+			],
 			absences: []
 		});
 	});
