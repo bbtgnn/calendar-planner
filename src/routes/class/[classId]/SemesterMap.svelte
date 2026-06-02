@@ -119,7 +119,7 @@
 			<span><i class="dot class"></i> Class</span>
 			<span><i class="dot extra"></i> Extra / 1:1</span>
 			<span><i class="dot skipped"></i> Skipped</span>
-			<span><i class="dot class dot-done"></i> Done (note on disk)</span>
+			<span><i class="dot class dot-done"></i> Done (all session requirements on disk)</span>
 		</div>
 		<div class="strip" role="region" aria-label="Semester months">
 			{#each yearMonths as ym (ym)}

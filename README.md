@@ -13,10 +13,13 @@ Saving to folders uses the [File System Access API](https://developer.mozilla.or
 - **One folder per class** — when you create a class (or link an existing one), you pick any directory on your machine. Paths can differ per class; there is no shared root folder.
 - **`planner.json`** — each class folder contains a versioned JSON file with the class row, students, lessons, and absences. You can version it in git, copy folders between machines, or inspect backups as plain text.
 - **`lezioni/` and `extra/`** — markdown lesson notes with YAML frontmatter (`data: DD/MM/YYYY`, `durata: hours`) and paired slide screenshots. Class sessions use `lezioni/`; extra / 1:1 sessions use `extra/`. For a note `09.md`, place the screenshot as `09-screen.png` in the same folder. Use **Refresh from folder** on the class page after editing files outside the app.
-  - **Done** — past class and extra sessions are **done** only when a note exists for the session date **and** the paired `{stem}-screen.png` is present. Future sessions are never marked done.
-  - **Missing screenshot** — past non-skipped sessions without the paired PNG show ⚠ in the **Done** column on the sessions list.
-  - **Preview** — click a session row to toggle an inline PNG preview below when the screenshot file exists.
-  Hour differences between note duration and the planner show as separate warnings only.
+- **`presenze.csv`** — at the class folder root. Row 0 lists lesson stems (column headers); column 0 lists student names. A stem column counts as present when at least one body row has non-whitespace data in that column. Attendance is matched to the note stem for the session date (e.g. note `09.md` → column `09`).
+- **Done** — for **past** non-skipped sessions, **done** means every applicable requirement is on disk:
+  - **Class** — lesson note for the session date, paired `{stem}-screen.png`, and a `presenze.csv` column for that stem with data.
+  - **Extra / 1:1** — lesson note and paired screenshot only (no attendance file).
+  - Future sessions are never marked done, even if files already exist.
+- **Done column** (sessions table) — green ✓ when all applicable criteria are satisfied; otherwise one icon per criterion (note, screenshot, attendance for class) in registry order — satisfied icons use the primary color, missing ones are muted. Hour differences between note duration and the planner show as ⚠ beside ✓ or icons (they do not block done).
+- **Screenshot preview** — when the PNG exists, use the image button in the **Actions** column to toggle an inline preview below the row.
 - **IndexedDB** — the app remembers which folder belongs to each class and holds a rebuildable working copy while you work. Deleting a class in the app removes its database rows and stored folder handle only; it does **not** delete files on disk.
 
 ### Auto-save
