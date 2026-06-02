@@ -24,4 +24,9 @@ describe('rosterImport', () => {
 		expect(r.names).toEqual(['Alice']);
 		expect(r.skipped).toBe(1);
 	});
+
+	it('parseCsvNames handles quoted commas in first column', () => {
+		const r = parseCsvNames('name,extra\n"Rossi, Mario",x\nBob,y');
+		expect(r.names).toEqual(['Rossi, Mario', 'Bob']);
+	});
 });
