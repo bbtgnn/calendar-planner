@@ -12,9 +12,23 @@
 		syncAddFormToKind
 	} from '$lib/logic/sessionKind';
 	import { buildTeacherHourStatBoxes } from '$lib/logic/stats';
-	import type { ClassRow, LessonSessionKind } from '$lib/db/types';
+	import type { ClassRow, LessonId, LessonSessionKind } from '$lib/db/types';
+	import {
+		loadScreenshotObjectUrl,
+		revokeScreenshotObjectUrl
+	} from '$lib/lessonNotes/loadScreenshot';
+	import type { ScreenshotRef } from '$lib/lessonNotes/types';
 	import { formatIsoDate } from '$lib/logic/dateFormat';
+	import { SESSION_CRITERIA } from '$lib/sessionCompletion/criteria';
+	import { criterionTooltip } from '$lib/sessionCompletion/criterionTooltip';
+	import { Image } from '@lucide/svelte';
 	import SemesterMap from './SemesterMap.svelte';
+
+	const COLS = 6;
+	let expanded = $state<Set<LessonId>>(new Set());
+	let imageByLesson = $state<Record<string, { url?: string; error?: string; loading?: boolean }>>(
+		{}
+	);
 
 	let { data }: { data: PageData } = $props();
 
@@ -133,6 +147,11 @@
 	}
 
 	async function refreshNotesFromFolder() {
+		for (const entry of Object.values(imageByLesson)) {
+			revokeScreenshotObjectUrl(entry?.url);
+		}
+		expanded = new Set();
+		imageByLesson = {};
 		await invalidateLoadKeys(classLessonsKey);
 	}
 
@@ -144,6 +163,40 @@
 			errorToast: 'Could not delete lesson.'
 		});
 	}
+
+	function toggleExpand(lesson: (typeof data.lessons)[0]) {
+		if (!lesson.screenshotRef) return;
+		const next = new Set(expanded);
+		if (next.has(lesson.id)) {
+			next.delete(lesson.id);
+			const prev = imageByLesson[lesson.id]?.url;
+			revokeScreenshotObjectUrl(prev);
+			const { [lesson.id]: _, ...rest } = imageByLesson;
+			imageByLesson = rest;
+		} else {
+			next.add(lesson.id);
+			void ensureScreenshotLoaded(lesson.id, lesson.screenshotRef);
+		}
+		expanded = next;
+	}
+
+	async function ensureScreenshotLoaded(lessonId: LessonId, ref: ScreenshotRef) {
+		if (imageByLesson[lessonId]?.url || imageByLesson[lessonId]?.loading) return;
+		imageByLesson = { ...imageByLesson, [lessonId]: { loading: true } };
+		const result = await loadScreenshotObjectUrl(data.class.id, ref);
+		imageByLesson = {
+			...imageByLesson,
+			[lessonId]: result.ok ? { url: result.url } : { error: result.message }
+		};
+	}
+
+	$effect(() => {
+		return () => {
+			for (const entry of Object.values(imageByLesson)) {
+				revokeScreenshotObjectUrl(entry?.url);
+			}
+		};
+	});
 </script>
 
 <section class="card">
@@ -290,10 +343,35 @@
 							<td>{lesson.durationHours}</td>
 							<td>{lesson.title}</td>
 							<td class="done-cell">
-								{#if lesson.sessionKind === 'skipped'}
+								{#if lesson.sessionKind === 'skipped' || lesson.date > data.todayIso}
+									<span class="muted">—</span>
+								{:else if !data.notesScanned}
 									<span class="muted">—</span>
 								{:else if lesson.done}
-									<span class="done-yes" title="Note on disk">✓</span>
+									<span class="done-yes" title="All complete">✓</span>
+									{#if lesson.hoursWarning}
+										<span
+											class="warn-icon"
+											title="Hours: planner {lesson.hoursWarning.plannerHours}h, note {lesson
+												.hoursWarning.noteHours}h"
+											>⚠</span
+										>
+									{/if}
+								{:else if lesson.criteria}
+									<span class="criteria-icons">
+										{#each SESSION_CRITERIA.filter((c) => c.appliesTo(lesson.sessionKind)) as def (def.id)}
+											{@const st = lesson.criteria?.find((c) => c.id === def.id)}
+											{@const Icon = def.icon}
+											<span
+												class="criterion-icon"
+												class:satisfied={st?.satisfied}
+												title={criterionTooltip(lesson, def.id)}
+												aria-label={criterionTooltip(lesson, def.id)}
+											>
+												<Icon size={16} />
+											</span>
+										{/each}
+									</span>
 									{#if lesson.hoursWarning}
 										<span
 											class="warn-icon"
@@ -303,10 +381,21 @@
 										>
 									{/if}
 								{:else}
-									<span class="muted" title="No matching note for this date">—</span>
+									<span class="muted">—</span>
 								{/if}
 							</td>
 							<td class="actions">
+								{#if lesson.screenshotRef}
+									<button
+										type="button"
+										class="link icon-btn"
+										aria-label="Show screenshot"
+										aria-expanded={expanded.has(lesson.id)}
+										onclick={() => toggleExpand(lesson)}
+									>
+										<Image size={16} />
+									</button>
+								{/if}
 								<a
 									class="link"
 									href={resolve('/class/[classId]/lesson/[lessonId]', {
@@ -321,6 +410,22 @@
 								</button>
 							</td>
 						</tr>
+						{#if expanded.has(lesson.id) && lesson.screenshotRef}
+							<tr class="screenshot-detail">
+								<td colspan={COLS}>
+									{#if imageByLesson[lesson.id]?.loading}
+										<p class="muted">Loading…</p>
+									{:else if imageByLesson[lesson.id]?.error}
+										<p class="warn">{imageByLesson[lesson.id].error}</p>
+									{:else if imageByLesson[lesson.id]?.url}
+										<img
+											src={imageByLesson[lesson.id].url}
+											alt="Screenshot for {lesson.title}"
+										/>
+									{/if}
+								</td>
+							</tr>
+						{/if}
 					{/each}
 				</tbody>
 			</table>
@@ -491,12 +596,33 @@
 		color: #16a34a;
 		font-weight: 700;
 	}
+	.criteria-icons {
+		display: inline-flex;
+		gap: 0.35rem;
+		align-items: center;
+	}
+	.criterion-icon {
+		color: var(--muted, #666);
+		display: inline-flex;
+	}
+	.criterion-icon.satisfied {
+		color: var(--primary, #16a34a);
+	}
 	.warn-icon {
 		margin-left: 0.25rem;
+	}
+	.icon-btn {
+		display: inline-flex;
+		align-items: center;
 	}
 	tr.upcoming {
 		background: #f0f7ff;
 		box-shadow: inset 3px 0 0 #1967d2;
+	}
+	.screenshot-detail img {
+		max-width: 100%;
+		max-height: 70vh;
+		display: block;
 	}
 	.muted {
 		color: #666;

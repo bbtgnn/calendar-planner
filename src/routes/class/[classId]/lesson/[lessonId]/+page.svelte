@@ -11,7 +11,8 @@
 	import { setAbsent } from '$lib/application/attendance';
 	import { showToast } from '$lib/ui/toast.svelte';
 	import type { LessonSessionKind } from '$lib/db/types';
-
+	import { SESSION_CRITERIA } from '$lib/sessionCompletion/criteria';
+	import { criterionTooltip } from '$lib/sessionCompletion/criterionTooltip';
 	let { data }: { data: PageData } = $props();
 
 	let date = $state('');
@@ -21,10 +22,6 @@
 
 	const formSeed = $derived(
 		`${data.lesson.id}|${data.lesson.date}|${data.lesson.durationHours}|${data.lesson.title}|${data.lesson.sessionKind}`
-	);
-
-	const noteFolderLabel = $derived(
-		data.lesson.sessionKind === 'extra' ? 'extra/' : 'lezioni/'
 	);
 
 	const kindUi = $derived(lessonFormUi(sessionKind));
@@ -59,6 +56,14 @@
 	const lessonKey = $derived(lessonLoadKey(data.lesson.id));
 	const classLessonsKey = $derived(classLessonsLoadKey(data.lesson.classId));
 	const lessonInvalidateKeys = $derived([lessonKey, classLessonsKey] as const);
+
+	const isPastSession = $derived(data.lesson.date <= data.todayIso);
+
+	const missingCriteriaLabels = $derived(
+		SESSION_CRITERIA.filter((c) => c.appliesTo(data.lesson.sessionKind))
+			.filter((def) => !data.lesson.criteria?.find((c) => c.id === def.id)?.satisfied)
+			.map((c) => c.label)
+	);
 
 	async function persistLessonMeta() {
 		const h = Number(durationHours);
@@ -158,22 +163,54 @@
 		</label>
 	</div>
 
-	<p class="done-readonly" title={kindUi.doneDisabledTitle}>
-		Done:
-		{#if data.lesson.sessionKind === 'skipped'}
-			<span class="muted">not applicable</span>
-		{:else if data.lesson.done}
-			<strong>Yes</strong> (note in {noteFolderLabel})
-			{#if data.lesson.hoursWarning}
-				<span class="warn">
-					— planner {data.lesson.hoursWarning.plannerHours}h, note {data.lesson.hoursWarning
-						.noteHours}h ({data.lesson.hoursWarning.fileName})</span
-				>
+	<div class="session-status">
+		<p class="status-summary">
+			{#if data.lesson.sessionKind === 'skipped'}
+				Done: <span class="muted">not applicable</span>
+			{:else if !isPastSession}
+				<span class="muted">Scheduled (not yet counted as done)</span>
+			{:else if !data.notesScanned}
+				<span class="muted">—</span>
+			{:else if data.lesson.done}
+				<strong>Done (all requirements on disk)</strong>
+				{#if data.lesson.hoursWarning}
+					<span class="warn">
+						⚠ planner {data.lesson.hoursWarning.plannerHours}h, note {data.lesson.hoursWarning
+							.noteHours}h ({data.lesson.hoursWarning.fileName})</span
+					>
+				{/if}
+			{:else if missingCriteriaLabels.length > 0}
+				<span>Missing: {missingCriteriaLabels.join(', ')}</span>
+				{#if data.lesson.hoursWarning}
+					<span class="warn">
+						⚠ planner {data.lesson.hoursWarning.plannerHours}h, note {data.lesson.hoursWarning
+							.noteHours}h ({data.lesson.hoursWarning.fileName})</span
+					>
+				{/if}
+			{:else}
+				<span class="muted">Incomplete</span>
 			{/if}
-		{:else}
-			<span class="muted">no matching note for this date</span>
+		</p>
+		{#if data.lesson.sessionKind !== 'skipped' && isPastSession && data.notesScanned && data.lesson.criteria?.length}
+			<ul class="criteria-checklist" aria-label="Session requirements">
+				{#each SESSION_CRITERIA.filter((c) => c.appliesTo(data.lesson.sessionKind)) as def (def.id)}
+					{@const st = data.lesson.criteria?.find((c) => c.id === def.id)}
+					{@const Icon = def.icon}
+					<li>
+						<span
+							class="criterion-icon"
+							class:satisfied={st?.satisfied}
+							title={criterionTooltip(data.lesson, def.id)}
+							aria-label={criterionTooltip(data.lesson, def.id)}
+						>
+							<Icon size={16} />
+						</span>
+						<span class="criterion-label" class:satisfied={st?.satisfied}>{def.label}</span>
+					</li>
+				{/each}
+			</ul>
 		{/if}
-	</p>
+	</div>
 </section>
 
 <section class="card">
@@ -238,9 +275,38 @@
 		gap: 0.25rem;
 		font-size: 0.85rem;
 	}
-	.done-readonly {
+	.session-status {
 		margin: 0.75rem 0 0;
 		font-size: 0.9rem;
+	}
+	.status-summary {
+		margin: 0;
+	}
+	.criteria-checklist {
+		list-style: none;
+		padding: 0;
+		margin: 0.5rem 0 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+	}
+	.criteria-checklist li {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	.criterion-icon {
+		color: var(--muted, #666);
+		display: inline-flex;
+	}
+	.criterion-icon.satisfied {
+		color: var(--primary, #16a34a);
+	}
+	.criterion-label {
+		color: var(--muted, #666);
+	}
+	.criterion-label.satisfied {
+		color: inherit;
 	}
 	.warn {
 		color: #8a4b00;

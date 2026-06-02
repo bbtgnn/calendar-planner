@@ -1,9 +1,15 @@
 import type { ClassId, LessonRow } from '$lib/db/types';
 import { toUtcIsoCalendarDate } from '$lib/logic/semesterCalendar';
-import { hasFolderPermission } from '$lib/persistence/classFolder';
+import { safeParseCsvGrid } from '$lib/schemas/csv';
+import { buildPresenzeStemIndex } from '$lib/schemas/presenze';
+import {
+	hasFolderPermission,
+	PRESENZE_FILE_NAME,
+	readOptionalTextFileInRoot
+} from '$lib/persistence/classFolder';
 import { getFolderHandle } from '$lib/persistence/meta';
 import { matchNotesToLessons } from './match';
-import { scanNotesSubdir } from './scanFolder';
+import { scanNotesSubdir, scanScreenshotsSubdir } from './scanFolder';
 import type { EnrichedLesson, LessonNoteWarning } from './types';
 import { upcomingSessionDate } from './upcoming';
 
@@ -37,14 +43,41 @@ export async function enrichClassLessonsFromFolder(
 			notesScanned: false
 		};
 	}
-	const [lezioni, extra] = await Promise.all([
+	const [lezioni, extra, lezioniPng, extraPng] = await Promise.all([
 		scanNotesSubdir(handle, 'lezioni'),
-		scanNotesSubdir(handle, 'extra')
+		scanNotesSubdir(handle, 'extra'),
+		scanScreenshotsSubdir(handle, 'lezioni'),
+		scanScreenshotsSubdir(handle, 'extra')
 	]);
-	const matched = matchNotesToLessons(lessons, lezioni.notes, extra.notes);
+
+	const presenzeText = await readOptionalTextFileInRoot(handle, PRESENZE_FILE_NAME);
+	let presenzeByStem = new Map<string, boolean>();
+	const presenzeWarnings: LessonNoteWarning[] = [];
+	if (presenzeText !== null) {
+		const safe = safeParseCsvGrid(presenzeText);
+		if (!safe.ok) {
+			presenzeWarnings.push({
+				code: 'presenze_parse_error',
+				message: 'Could not parse presenze.csv'
+			});
+		} else {
+			presenzeByStem = buildPresenzeStemIndex(safe.grid);
+		}
+	}
+
+	const matched = matchNotesToLessons(lessons, lezioni.notes, extra.notes, {
+		todayIso,
+		screenshots: { lezioni: lezioniPng, extra: extraPng },
+		presenzeByStem
+	});
 	return {
 		lessons: matched.lessons,
-		warnings: [...lezioni.warnings, ...extra.warnings, ...matched.warnings],
+		warnings: [
+			...lezioni.warnings,
+			...extra.warnings,
+			...presenzeWarnings,
+			...matched.warnings
+		],
 		upcomingDate: upcomingSessionDate(matched.lessons, todayIso),
 		notesScanned: true
 	};

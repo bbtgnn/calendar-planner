@@ -1,6 +1,19 @@
 import type { LessonRow } from '$lib/db/types';
+import { allCriteriaSatisfied, evaluateSessionCriteria } from '$lib/sessionCompletion/criteria';
 import type { EnrichedLesson, LessonNoteWarning, NoteFolder, ScannedNote } from './types';
 import { folderForSessionKind } from './types';
+import { screenshotFileNameForNote } from './screenshot';
+
+export type ScreenshotIndex = {
+	lezioni: Set<string>;
+	extra: Set<string>;
+};
+
+export type MatchContext = {
+	todayIso: string;
+	screenshots: ScreenshotIndex;
+	presenzeByStem: Map<string, boolean>;
+};
 
 export type MatchResult = {
 	lessons: EnrichedLesson[];
@@ -56,10 +69,20 @@ function orphanWarnings(
 	return out;
 }
 
+function isPastSession(dateIso: string, todayIso: string): boolean {
+	return dateIso <= todayIso;
+}
+
+function noteStem(fileName: string): string | null {
+	if (!fileName.endsWith('.md')) return null;
+	return fileName.replace(/\.md$/i, '');
+}
+
 export function matchNotesToLessons(
 	lessons: LessonRow[],
 	lezioniNotes: ScannedNote[],
-	extraNotes: ScannedNote[]
+	extraNotes: ScannedNote[],
+	ctx: MatchContext
 ): MatchResult {
 	const lezioniByDate = groupByDate(lezioniNotes);
 	const extraByDate = groupByDate(extraNotes);
@@ -82,12 +105,46 @@ export function matchNotesToLessons(
 
 		const byDate = folder === 'lezioni' ? lezioniByDate : extraByDate;
 		const notes = byDate.get(lesson.date) ?? [];
+
 		if (notes.length === 0) {
-			return { ...lesson, done: false };
+			const criteria = evaluateSessionCriteria({
+				lesson,
+				todayIso: ctx.todayIso,
+				hasNote: false,
+				hasScreenshot: false,
+				stem: null,
+				presenzeByStem: ctx.presenzeByStem
+			});
+			return {
+				...lesson,
+				done: allCriteriaSatisfied(criteria),
+				criteria
+			};
 		}
 
 		const note = notes[0];
-		const row: EnrichedLesson = { ...lesson, done: true };
+		const pngName = screenshotFileNameForNote(note.fileName);
+		const pngSet = folder === 'lezioni' ? ctx.screenshots.lezioni : ctx.screenshots.extra;
+		const hasPng = pngName !== null && pngSet.has(pngName);
+
+		const criteria = evaluateSessionCriteria({
+			lesson,
+			todayIso: ctx.todayIso,
+			hasNote: true,
+			hasScreenshot: hasPng,
+			stem: noteStem(note.fileName),
+			presenzeByStem: ctx.presenzeByStem
+		});
+
+		const row: EnrichedLesson = {
+			...lesson,
+			done: allCriteriaSatisfied(criteria),
+			criteria,
+			matchedNote: { folder, fileName: note.fileName }
+		};
+		if (hasPng && pngName) {
+			row.screenshotRef = { folder, fileName: pngName };
+		}
 		if (note.durationHours !== lesson.durationHours) {
 			row.hoursWarning = {
 				plannerHours: lesson.durationHours,

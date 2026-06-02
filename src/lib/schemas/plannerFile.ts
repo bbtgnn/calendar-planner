@@ -2,7 +2,7 @@ import { z } from 'zod';
 import {
 	absenceRowSchema,
 	classRowSchema,
-	lessonRowSchema,
+	persistedLessonRowSchema,
 	studentRowSchema
 } from './rows';
 
@@ -11,7 +11,7 @@ export const plannerFileSchema = z
 		version: z.literal(1),
 		class: classRowSchema,
 		students: z.array(studentRowSchema),
-		lessons: z.array(lessonRowSchema),
+		lessons: z.array(persistedLessonRowSchema),
 		absences: z.array(absenceRowSchema)
 	})
 	.superRefine((data, ctx) => {

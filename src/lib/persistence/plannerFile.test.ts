@@ -8,6 +8,15 @@ import {
 	serializePlannerFile
 } from './plannerFile';
 
+const persistedLesson = {
+	id: 'l1',
+	classId: 'c1',
+	date: '2026-01-01',
+	durationHours: 1,
+	title: 'Intro',
+	sessionKind: 'class' as const
+};
+
 const validPlanner = {
 	version: 1 as const,
 	class: {
@@ -20,26 +29,9 @@ const validPlanner = {
 		semesterEnd: null
 	},
 	students: [{ id: 's1', classId: 'c1', name: 'Alice' }],
-	lessons: [
-		{
-			id: 'l1',
-			classId: 'c1',
-			date: '2026-01-01',
-			durationHours: 1,
-			title: 'Intro',
-			done: false,
-			sessionKind: 'class' as const
-		}
-	],
+	lessons: [persistedLesson],
 	absences: [{ id: 'a1', lessonId: 'l1', studentId: 's1' }]
 } satisfies PlannerFileV1;
-
-const validBackup = {
-	classes: validPlanner.class,
-	students: validPlanner.students,
-	lessons: validPlanner.lessons,
-	absences: validPlanner.absences
-};
 
 describe('planner file persistence', () => {
 	it('exports constants', () => {
@@ -49,6 +41,22 @@ describe('planner file persistence', () => {
 
 	it('parsePlannerFile accepts valid data', () => {
 		const result = parsePlannerFile(validPlanner);
+		expect(result).toEqual({ ok: true, value: validPlanner });
+	});
+
+	it('parsePlannerFile strips stored done and enrich fields from legacy files', () => {
+		const result = parsePlannerFile({
+			...validPlanner,
+			lessons: [
+				{
+					...persistedLesson,
+					done: true,
+					criteria: [{ id: 'note', satisfied: true }],
+					matchedNote: { folder: 'lezioni', fileName: '09.md' },
+					screenshotRef: { folder: 'lezioni', fileName: '09-screen.png' }
+				}
+			]
+		});
 		expect(result).toEqual({ ok: true, value: validPlanner });
 	});
 
@@ -66,6 +74,28 @@ describe('planner file persistence', () => {
 		const reparsed = parsePlannerFile(JSON.parse(json));
 		expect(reparsed).toEqual({ ok: true, value: validPlanner });
 	});
+
+	it('serializePlannerFile strips derived lesson fields', () => {
+		const json = serializePlannerFile({
+			...validPlanner,
+			lessons: [
+				{
+					...persistedLesson,
+					done: true,
+					criteria: [{ id: 'note', satisfied: true }],
+					matchedNote: { folder: 'lezioni', fileName: '09.md' },
+					screenshotRef: { folder: 'lezioni', fileName: '09-screen.png' },
+					hoursWarning: {
+						plannerHours: 2,
+						noteHours: 1.5,
+						fileName: '09.md',
+						folder: 'lezioni'
+					}
+				}
+			]
+		} as unknown as PlannerFileV1);
+		expect(JSON.parse(json).lessons[0]).toEqual(persistedLesson);
+	});
 });
 
 describe('parseLegacyBackup', () => {
@@ -73,7 +103,7 @@ describe('parseLegacyBackup', () => {
 		const result = parseLegacyBackup({
 			classes: [validPlanner.class],
 			students: validPlanner.students,
-			lessons: validPlanner.lessons,
+			lessons: [{ ...persistedLesson, done: false }],
 			absences: validPlanner.absences
 		});
 		expect(result.ok).toBe(true);

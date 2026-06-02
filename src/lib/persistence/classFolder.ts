@@ -103,3 +103,36 @@ export async function listMarkdownFilesInSubdir(
 	}
 	return out;
 }
+
+export async function listPngFileNamesInSubdir(
+	root: FileSystemDirectoryHandle,
+	subdirName: string
+): Promise<Set<string>> {
+	let subdir: FileSystemDirectoryHandle;
+	try {
+		subdir = await root.getDirectoryHandle(subdirName);
+	} catch {
+		return new Set();
+	}
+	const names = new Set<string>();
+	for await (const [name, handle] of subdir.entries()) {
+		if (handle.kind !== 'file') continue;
+		if (!name.toLowerCase().endsWith('.png')) continue;
+		names.add(name.toLowerCase());
+	}
+	return names;
+}
+
+export const PRESENZE_FILE_NAME = 'presenze.csv';
+
+export async function readOptionalTextFileInRoot(
+	root: FileSystemDirectoryHandle,
+	fileName: string
+): Promise<string | null> {
+	try {
+		const fh = await root.getFileHandle(fileName);
+		return await (await fh.getFile()).text();
+	} catch {
+		return null;
+	}
+}

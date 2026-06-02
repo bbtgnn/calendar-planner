@@ -28,6 +28,9 @@ export const lessonRowSchema = z.object({
 	sessionKind: lessonSessionKindSchema.default('class')
 });
 
+/** On-disk planner.json lessons — `done` is derived at runtime from folder scan. */
+export const persistedLessonRowSchema = lessonRowSchema.omit({ done: true });
+
 export const absenceRowSchema = z.object({
 	id: z.string().min(1),
 	lessonId: z.string().min(1),
