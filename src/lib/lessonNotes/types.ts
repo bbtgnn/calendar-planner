@@ -1,4 +1,5 @@
 import type { LessonRow, LessonSessionKind } from '$lib/db/types';
+import type { CriterionStatus } from '$lib/sessionCompletion/types';
 
 export type NoteFolder = 'lezioni' | 'extra';
 
@@ -44,6 +45,7 @@ export type EnrichedLesson = LessonRow & {
 	screenshotMissing?: boolean;
 	screenshotRef?: ScreenshotRef;
 	matchedNote?: MatchedNoteRef;
+	criteria?: CriterionStatus[];
 };
 
 export function folderForSessionKind(kind: LessonSessionKind): NoteFolder | null {
