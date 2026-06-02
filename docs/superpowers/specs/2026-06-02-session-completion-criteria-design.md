@@ -43,6 +43,37 @@
 | Hours mismatch | **Warning only** — ⚠ when `hoursWarning` set, whether or not session is done |
 | Screenshot preview | Actions column icon button; remove row `onclick` expand |
 | Supersedes | Screenshot spec Done column (✓ + ⚠) and row-click expand |
+| CSV parsing | **d3-dsv** `csvParseRows` → `string[][]` (syntax only) |
+| Validation | **Zod** at boundary — same pattern as `plannerFileSchema` |
+| CSV library rejected | **papaparse** — generic `T` is weaker than Zod-inferred domain types |
+
+## Technology
+
+**Pipeline for external text (CSV, JSON):**
+
+```text
+raw string → d3-dsv (syntax) → Zod schema.parse → z.infer<typeof schema>
+```
+
+| Package | Role |
+|---------|------|
+| `d3-dsv` | `csvParseRows` for `presenze.csv` and roster import |
+| `@types/d3-dsv` | Dev typings for `string[][]` |
+| `zod` | Already used in `src/lib/schemas/` — extend, do not add a second validator |
+| `@lucide/svelte` | Criterion icons in Done column (`FileText`, `Image`, `Users`) |
+
+**New modules**
+
+| Module | Responsibility |
+|--------|----------------|
+| `src/lib/csv/parseGrid.ts` | `stripBom` + `csvParseRows` (no domain rules) |
+| `src/lib/schemas/csv.ts` | `csvGridSchema`, `CsvGrid` type |
+| `src/lib/schemas/presenze.ts` | `presenzeGridSchema`, `buildPresenzeStemIndex`, `loadPresenzeStemIndex(text)` |
+| `src/lib/schemas/rosterCsv.ts` | `importNamesFromCsvGrid` (replaces naive `firstCell` logic) |
+
+**Refactor:** `rosterImport.parseCsvNames` calls `parseCsvGrid` + Zod (fixes quoted commas / BOM per CONCERNS.md).
+
+**Not in scope:** `gray-matter` / YAML lib for lesson notes (keep `parseFrontmatter.ts`).
 
 ## Criterion catalog
 
@@ -149,8 +180,11 @@ type EnrichedLesson = LessonRow & {
 | `package.json` | Add `@lucide/svelte` |
 | `src/lib/sessionCompletion/types.ts` | `CriterionDef`, `CriterionStatus`, `CompletionContext` |
 | `src/lib/sessionCompletion/criteria.ts` | `SESSION_CRITERIA`, `evaluateSessionCriteria` |
-| `src/lib/sessionCompletion/presenze.ts` | `parsePresenzeCsv(text) → Map<stem, boolean>` |
-| `src/lib/sessionCompletion/presenze.test.ts` | Parser tests |
+| `src/lib/schemas/presenze.ts` | Zod + `buildPresenzeStemIndex` |
+| `src/lib/schemas/presenze.test.ts` | Presenze index tests |
+| `src/lib/csv/parseGrid.ts` | d3-dsv wrapper |
+| `src/lib/schemas/csv.ts` | `csvGridSchema` |
+| `src/lib/schemas/rosterCsv.ts` | Roster import from `CsvGrid` |
 | `src/lib/lessonNotes/enrich.ts` | Read `presenze.csv` once; build `CompletionContext` |
 | `src/lib/lessonNotes/match.ts` | Set `criteria`, `done`, refs; drop `screenshotMissing` |
 | `src/lib/lessonNotes/types.ts` | Extend `EnrichedLesson`; remove `screenshotMissing` |
