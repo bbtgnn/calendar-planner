@@ -122,3 +122,17 @@ export async function listPngFileNamesInSubdir(
 	}
 	return names;
 }
+
+export const PRESENZE_FILE_NAME = 'presenze.csv';
+
+export async function readOptionalTextFileInRoot(
+	root: FileSystemDirectoryHandle,
+	fileName: string
+): Promise<string | null> {
+	try {
+		const fh = await root.getFileHandle(fileName);
+		return await (await fh.getFile()).text();
+	} catch {
+		return null;
+	}
+}

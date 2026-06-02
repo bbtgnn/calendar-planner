@@ -22,35 +22,42 @@ function match(
 	lessons: LessonRow[],
 	lezioni: ScannedNote[],
 	extra: ScannedNote[],
-	pngs = PNGS
+	pngs = PNGS,
+	presenzeByStem = new Map<string, boolean>()
 ) {
 	return matchNotesToLessons(lessons, lezioni, extra, {
 		todayIso: '2026-06-01',
-		screenshots: pngs
+		screenshots: pngs,
+		presenzeByStem
 	});
 }
 
+const CLASS_PRESENZE = new Map([['09', true]]);
+
 describe('matchNotesToLessons', () => {
-	it('marks class session done when lezioni note and paired png exist for date', () => {
+	it('marks class session done when note, png, and presenze exist for date', () => {
 		const lessons = [lesson({ id: '1', date: '2026-03-09', sessionKind: 'class' })];
 		const { lessons: out, warnings } = match(
 			lessons,
 			[{ folder: 'lezioni', fileName: '09.md', dateIso: '2026-03-09', durationHours: 5 }],
 			[],
-			{ lezioni: new Set(['09-screen.png']), extra: new Set() }
+			{ lezioni: new Set(['09-screen.png']), extra: new Set() },
+			CLASS_PRESENZE
 		);
 		expect(out[0].done).toBe(true);
 		expect(out[0].screenshotRef).toEqual({ folder: 'lezioni', fileName: '09-screen.png' });
+		expect(out[0].criteria?.every((c) => c.satisfied)).toBe(true);
 		expect(warnings).toHaveLength(0);
 	});
 
-	it('hours mismatch is warning only, still done', () => {
+	it('hours mismatch is warning only, still done when criteria met', () => {
 		const lessons = [lesson({ id: '1', date: '2026-03-09', sessionKind: 'class', durationHours: 5 })];
 		const { lessons: out, warnings } = match(
 			lessons,
 			[{ folder: 'lezioni', fileName: '09.md', dateIso: '2026-03-09', durationHours: 4.5 }],
 			[],
-			{ lezioni: new Set(['09-screen.png']), extra: new Set() }
+			{ lezioni: new Set(['09-screen.png']), extra: new Set() },
+			CLASS_PRESENZE
 		);
 		expect(out[0].done).toBe(true);
 		expect(out[0].hoursWarning?.noteHours).toBe(4.5);
@@ -88,7 +95,7 @@ describe('matchNotesToLessons', () => {
 			[]
 		);
 		expect(out[0].done).toBe(false);
-		expect(out[0].screenshotMissing).toBeUndefined();
+		expect(out[0].criteria).toBeUndefined();
 	});
 
 	it('extra sessions use extra folder', () => {
@@ -103,7 +110,7 @@ describe('matchNotesToLessons', () => {
 		expect(out[0].screenshotRef).toEqual({ folder: 'extra', fileName: '01-screen.png' });
 	});
 
-	it('done only when note and paired png exist (past)', () => {
+	it('class not done without presenze even with note and png', () => {
 		const lessons = [lesson({ id: '1', date: '2026-03-09', sessionKind: 'class' })];
 		const { lessons: out } = match(
 			lessons,
@@ -111,38 +118,43 @@ describe('matchNotesToLessons', () => {
 			[],
 			{ lezioni: new Set(['09-screen.png']), extra: new Set() }
 		);
-		expect(out[0].done).toBe(true);
+		expect(out[0].done).toBe(false);
+		expect(out[0].criteria?.find((c) => c.id === 'attendance')?.satisfied).toBe(false);
 		expect(out[0].screenshotRef).toEqual({ folder: 'lezioni', fileName: '09-screen.png' });
 	});
 
-	it('note without png: not done, screenshotMissing', () => {
+	it('note without png: not done, screenshot criterion unsatisfied', () => {
 		const lessons = [lesson({ id: '1', date: '2026-03-09', sessionKind: 'class' })];
 		const { lessons: out } = match(
 			lessons,
 			[{ folder: 'lezioni', fileName: '09.md', dateIso: '2026-03-09', durationHours: 5 }],
 			[],
-			{ lezioni: new Set(), extra: new Set() }
+			{ lezioni: new Set(), extra: new Set() },
+			CLASS_PRESENZE
 		);
 		expect(out[0].done).toBe(false);
-		expect(out[0].screenshotMissing).toBe(true);
+		expect(out[0].criteria?.find((c) => c.id === 'screenshot')?.satisfied).toBe(false);
 	});
 
-	it('past session without note: screenshotMissing', () => {
+	it('past session without note: criteria all unsatisfied', () => {
 		const lessons = [lesson({ id: '1', date: '2026-03-09', sessionKind: 'class' })];
 		const { lessons: out } = match(lessons, [], []);
-		expect(out[0].screenshotMissing).toBe(true);
+		expect(out[0].done).toBe(false);
+		expect(out[0].criteria?.length).toBe(3);
+		expect(out[0].criteria?.every((c) => !c.satisfied)).toBe(true);
 	});
 
-	it('future session with note+png: not done, no screenshotMissing', () => {
+	it('future session with note+png: not done, no criteria', () => {
 		const lessons = [lesson({ id: '1', date: '2026-12-01', sessionKind: 'class' })];
 		const { lessons: out } = match(
 			lessons,
 			[{ folder: 'lezioni', fileName: '09.md', dateIso: '2026-12-01', durationHours: 5 }],
 			[],
-			{ lezioni: new Set(['09-screen.png']), extra: new Set() }
+			{ lezioni: new Set(['09-screen.png']), extra: new Set() },
+			CLASS_PRESENZE
 		);
 		expect(out[0].done).toBe(false);
-		expect(out[0].screenshotMissing).toBeUndefined();
+		expect(out[0].criteria).toEqual([]);
 		expect(out[0].screenshotRef).toEqual({ folder: 'lezioni', fileName: '09-screen.png' });
 	});
 });

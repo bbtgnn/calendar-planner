@@ -1,6 +1,12 @@
 import type { ClassId, LessonRow } from '$lib/db/types';
 import { toUtcIsoCalendarDate } from '$lib/logic/semesterCalendar';
-import { hasFolderPermission } from '$lib/persistence/classFolder';
+import { safeParseCsvGrid } from '$lib/schemas/csv';
+import { buildPresenzeStemIndex } from '$lib/schemas/presenze';
+import {
+	hasFolderPermission,
+	PRESENZE_FILE_NAME,
+	readOptionalTextFileInRoot
+} from '$lib/persistence/classFolder';
 import { getFolderHandle } from '$lib/persistence/meta';
 import { matchNotesToLessons } from './match';
 import { scanNotesSubdir, scanScreenshotsSubdir } from './scanFolder';
@@ -43,13 +49,35 @@ export async function enrichClassLessonsFromFolder(
 		scanScreenshotsSubdir(handle, 'lezioni'),
 		scanScreenshotsSubdir(handle, 'extra')
 	]);
+
+	const presenzeText = await readOptionalTextFileInRoot(handle, PRESENZE_FILE_NAME);
+	let presenzeByStem = new Map<string, boolean>();
+	const presenzeWarnings: LessonNoteWarning[] = [];
+	if (presenzeText !== null) {
+		const safe = safeParseCsvGrid(presenzeText);
+		if (!safe.ok) {
+			presenzeWarnings.push({
+				code: 'presenze_parse_error',
+				message: 'Could not parse presenze.csv'
+			});
+		} else {
+			presenzeByStem = buildPresenzeStemIndex(safe.grid);
+		}
+	}
+
 	const matched = matchNotesToLessons(lessons, lezioni.notes, extra.notes, {
 		todayIso,
-		screenshots: { lezioni: lezioniPng, extra: extraPng }
+		screenshots: { lezioni: lezioniPng, extra: extraPng },
+		presenzeByStem
 	});
 	return {
 		lessons: matched.lessons,
-		warnings: [...lezioni.warnings, ...extra.warnings, ...matched.warnings],
+		warnings: [
+			...lezioni.warnings,
+			...extra.warnings,
+			...presenzeWarnings,
+			...matched.warnings
+		],
 		upcomingDate: upcomingSessionDate(matched.lessons, todayIso),
 		notesScanned: true
 	};

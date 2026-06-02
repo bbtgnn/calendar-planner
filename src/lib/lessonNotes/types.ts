@@ -7,7 +7,8 @@ export type LessonNoteWarningCode =
 	| 'hours_mismatch'
 	| 'duplicate_date'
 	| 'orphan_note'
-	| 'parse_error';
+	| 'parse_error'
+	| 'presenze_parse_error';
 
 export type LessonNoteWarning = {
 	code: LessonNoteWarningCode;
@@ -42,7 +43,6 @@ export type MatchedNoteRef = {
 
 export type EnrichedLesson = LessonRow & {
 	hoursWarning?: LessonHoursWarning;
-	screenshotMissing?: boolean;
 	screenshotRef?: ScreenshotRef;
 	matchedNote?: MatchedNoteRef;
 	criteria?: CriterionStatus[];

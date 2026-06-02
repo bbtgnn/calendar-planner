@@ -13,7 +13,6 @@
 	} from '$lib/logic/sessionKind';
 	import { buildTeacherHourStatBoxes } from '$lib/logic/stats';
 	import type { ClassRow, LessonId, LessonSessionKind } from '$lib/db/types';
-	import { doneColumnTooltip } from '$lib/lessonNotes/doneTooltip';
 	import {
 		loadScreenshotObjectUrl,
 		revokeScreenshotObjectUrl
@@ -360,9 +359,6 @@
 									{/if}
 								{:else}
 									<span class="muted">—</span>
-									{#if lesson.screenshotMissing}
-										<span class="warn-icon" title={doneColumnTooltip(lesson)}>⚠</span>
-									{/if}
 								{/if}
 							</td>
 							<td class="actions" onclick={(e) => e.stopPropagation()}>

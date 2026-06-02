@@ -11,8 +11,6 @@
 	import { setAbsent } from '$lib/application/attendance';
 	import { showToast } from '$lib/ui/toast.svelte';
 	import type { LessonSessionKind } from '$lib/db/types';
-	import { doneColumnTooltip } from '$lib/lessonNotes/doneTooltip';
-
 	let { data }: { data: PageData } = $props();
 
 	let date = $state('');
@@ -171,8 +169,6 @@
 						.noteHours}h ({data.lesson.hoursWarning.fileName})</span
 				>
 			{/if}
-		{:else if data.lesson.screenshotMissing}
-			<span class="muted">{doneColumnTooltip(data.lesson)}</span>
 		{:else if data.lesson.matchedNote || data.lesson.screenshotRef}
 			<span class="muted">Scheduled (not yet counted as done)</span>
 		{:else}
