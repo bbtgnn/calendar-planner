@@ -19,6 +19,9 @@
 	} from '$lib/lessonNotes/loadScreenshot';
 	import type { ScreenshotRef } from '$lib/lessonNotes/types';
 	import { formatIsoDate } from '$lib/logic/dateFormat';
+	import { SESSION_CRITERIA } from '$lib/sessionCompletion/criteria';
+	import { criterionTooltip } from '$lib/sessionCompletion/criterionTooltip';
+	import { Image } from '@lucide/svelte';
 	import SemesterMap from './SemesterMap.svelte';
 
 	const COLS = 6;
@@ -320,16 +323,11 @@
 				</thead>
 				<tbody>
 					{#each data.lessons as lesson (lesson.id)}
-						{@const isExpandable = !!lesson.screenshotRef}
 						<tr
 							class:upcoming={data.upcomingDate !== null && lesson.date === data.upcomingDate}
-							class:row-expandable={isExpandable}
-							class:row-expanded={expanded.has(lesson.id)}
-							aria-expanded={isExpandable ? expanded.has(lesson.id) : undefined}
 							aria-label={data.upcomingDate !== null && lesson.date === data.upcomingDate
 								? 'Upcoming session'
 								: undefined}
-							onclick={() => isExpandable && toggleExpand(lesson)}
 						>
 							<td>
 								<span
@@ -345,10 +343,35 @@
 							<td>{lesson.durationHours}</td>
 							<td>{lesson.title}</td>
 							<td class="done-cell">
-								{#if lesson.sessionKind === 'skipped'}
+								{#if lesson.sessionKind === 'skipped' || lesson.date > data.todayIso}
+									<span class="muted">—</span>
+								{:else if !data.notesScanned}
 									<span class="muted">—</span>
 								{:else if lesson.done}
-									<span class="done-yes" title="Note and screenshot on disk">✓</span>
+									<span class="done-yes" title="All complete">✓</span>
+									{#if lesson.hoursWarning}
+										<span
+											class="warn-icon"
+											title="Hours: planner {lesson.hoursWarning.plannerHours}h, note {lesson
+												.hoursWarning.noteHours}h"
+											>⚠</span
+										>
+									{/if}
+								{:else if lesson.criteria}
+									<span class="criteria-icons">
+										{#each SESSION_CRITERIA.filter((c) => c.appliesTo(lesson.sessionKind)) as def (def.id)}
+											{@const st = lesson.criteria?.find((c) => c.id === def.id)}
+											{@const Icon = def.icon}
+											<span
+												class="criterion-icon"
+												class:satisfied={st?.satisfied}
+												title={criterionTooltip(lesson, def.id)}
+												aria-label={criterionTooltip(lesson, def.id)}
+											>
+												<Icon size={16} />
+											</span>
+										{/each}
+									</span>
 									{#if lesson.hoursWarning}
 										<span
 											class="warn-icon"
@@ -361,7 +384,18 @@
 									<span class="muted">—</span>
 								{/if}
 							</td>
-							<td class="actions" onclick={(e) => e.stopPropagation()}>
+							<td class="actions">
+								{#if lesson.screenshotRef}
+									<button
+										type="button"
+										class="link icon-btn"
+										aria-label="Show screenshot"
+										aria-expanded={expanded.has(lesson.id)}
+										onclick={() => toggleExpand(lesson)}
+									>
+										<Image size={16} />
+									</button>
+								{/if}
 								<a
 									class="link"
 									href={resolve('/class/[classId]/lesson/[lessonId]', {
@@ -562,14 +596,24 @@
 		color: #16a34a;
 		font-weight: 700;
 	}
+	.criteria-icons {
+		display: inline-flex;
+		gap: 0.35rem;
+		align-items: center;
+	}
+	.criterion-icon {
+		color: var(--muted, #666);
+		display: inline-flex;
+	}
+	.criterion-icon.satisfied {
+		color: var(--primary, #16a34a);
+	}
 	.warn-icon {
 		margin-left: 0.25rem;
 	}
-	tr.row-expandable {
-		cursor: pointer;
-	}
-	tr.row-expandable:hover {
-		background: #f6f8fb;
+	.icon-btn {
+		display: inline-flex;
+		align-items: center;
 	}
 	tr.upcoming {
 		background: #f0f7ff;
