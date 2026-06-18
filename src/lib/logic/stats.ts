@@ -31,6 +31,15 @@ export function sumDoneTeacherHours(lessons: LessonForContractStats[]): number {
 	);
 }
 
+export function sumDoneTeacherHoursForKind(
+	lessons: LessonForContractStats[],
+	kind: LessonSessionKind
+): number {
+	return sumDurationHours(
+		lessons.filter((l) => l.done && l.sessionKind === kind)
+	);
+}
+
 /** Done teacher hours as a percent of contract N (0–100). */
 export function contractCompletionPercent(
 	contractTeacherHours: number,
@@ -145,20 +154,6 @@ export function doneLessonCount(lessons: LessonForContractStats[]): number {
 	return doneClassLessonCount(lessons);
 }
 
-export type TeacherHourStatBoxKey = 'contract' | 'class' | 'extra';
-
-export type TeacherHourStatBox = {
-	key: TeacherHourStatBoxKey;
-	title: string;
-	planned: number;
-	total: number;
-	percent: number | null;
-	fractionLabel: string;
-	percentLabel: string;
-	tier?: 'done' | 'almost' | 'behind';
-	warning?: string;
-};
-
 /** Effective extra hour cap after class overage beyond C_min. */
 export function effectiveExtraTeacherHourCap(
 	contractTeacherHours: number,
@@ -171,59 +166,28 @@ export function effectiveExtraTeacherHourCap(
 	return Math.max(0, pool - beyond);
 }
 
-export function contractCompletionTier(percent: number): 'done' | 'almost' | 'behind' {
-	if (percent >= 100) return 'done';
-	if (percent > 85) return 'almost';
-	return 'behind';
-}
+export type HourProgressRowKey = 'contract' | 'class' | 'extra' | 'student';
 
-function scheduledFillPercent(total: number, planned: number): number | null {
-	if (total <= 0) return null;
-	return Math.round((planned / total) * 100);
-}
+export type HourProgressRow = {
+	key: HourProgressRowKey;
+	label: string;
+	contract: number | null;
+	planned: number;
+	done: number;
+	warning?: string;
+};
 
-function formatTeacherHourFraction(planned: number, total: number): string {
-	if (total <= 0) return '—';
-	return `${planned.toFixed(1)} / ${total.toFixed(1)} h`;
-}
-
-function formatTeacherHourPercent(percent: number | null): string {
-	if (percent === null) return '(—%)';
-	return `(${percent}%)`;
-}
-
-function makeStatBox(
-	key: TeacherHourStatBoxKey,
-	title: string,
-	planned: number,
-	total: number,
-	options?: { tier?: boolean; warning?: string }
-): TeacherHourStatBox {
-	const percent = scheduledFillPercent(total, planned);
-	const box: TeacherHourStatBox = {
-		key,
-		title,
-		planned,
-		total,
-		percent,
-		fractionLabel: formatTeacherHourFraction(planned, total),
-		percentLabel: formatTeacherHourPercent(percent),
-		warning: options?.warning
-	};
-	if (options?.tier && percent !== null) {
-		box.tier = contractCompletionTier(percent);
-	}
-	return box;
-}
-
-export function buildTeacherHourStatBoxes(
+export function buildHourProgressRows(
 	contractTeacherHours: number,
 	requiredStudentLessonHours: number,
 	lessons: LessonForContractStats[]
-): TeacherHourStatBox[] {
+): HourProgressRow[] {
 	const tClass = sumTeacherHoursForKind(lessons, 'class');
 	const tExtra = sumTeacherHoursForKind(lessons, 'extra');
 	const tAll = tClass + tExtra;
+	const doneClass = sumDoneTeacherHoursForKind(lessons, 'class');
+	const doneExtra = sumDoneTeacherHoursForKind(lessons, 'extra');
+	const doneAll = doneClass + doneExtra;
 	const cMin = minimumClassTeacherHoursForStudentLessonHours(requiredStudentLessonHours);
 	const extraCap = effectiveExtraTeacherHourCap(
 		contractTeacherHours,
@@ -237,8 +201,34 @@ export function buildTeacherHourStatBoxes(
 			: undefined;
 
 	return [
-		makeStatBox('contract', 'Contract', tAll, contractTeacherHours, { tier: true }),
-		makeStatBox('class', 'Class', tClass, cMin),
-		makeStatBox('extra', 'Extra', tExtra, extraCap, { warning: extraWarning })
+		{
+			key: 'contract',
+			label: 'Contract (60 min)',
+			contract: contractTeacherHours > 0 ? contractTeacherHours : null,
+			planned: tAll,
+			done: doneAll
+		},
+		{
+			key: 'class',
+			label: 'Class (60 min)',
+			contract: cMin,
+			planned: tClass,
+			done: doneClass
+		},
+		{
+			key: 'extra',
+			label: 'Extra (60 min)',
+			contract: extraCap,
+			planned: tExtra,
+			done: doneExtra,
+			warning: extraWarning
+		},
+		{
+			key: 'student',
+			label: 'Student (50 min)',
+			contract: requiredStudentLessonHours,
+			planned: studentHoursFromTeacherHours(tClass),
+			done: studentHoursFromTeacherHours(doneClass)
+		}
 	];
 }

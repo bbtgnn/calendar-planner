@@ -19,7 +19,7 @@
     lessonFormUi,
     syncAddFormToKind,
   } from "$lib/logic/sessionKind";
-  import { buildTeacherHourStatBoxes } from "$lib/logic/stats";
+  import { buildHourProgressRows } from "$lib/logic/stats";
   import type { ClassRow, LessonId, LessonSessionKind } from "$lib/db/types";
   import {
     loadScreenshotObjectUrl,
@@ -80,13 +80,18 @@
     targetStudentLessonHours = data.class.requiredStudentLessonHours;
   });
 
-  const statBoxes = $derived(
-    buildTeacherHourStatBoxes(
+  const hourProgressRows = $derived(
+    buildHourProgressRows(
       Number(targetHours),
       Number(targetStudentLessonHours),
       data.lessons,
     ),
   );
+
+  function formatHourValue(value: number | null): string {
+    if (value === null) return "—";
+    return `${value.toFixed(1)} h`;
+  }
 
   const dupDates = $derived.by(() => {
     const counts: Record<string, number> = {};
@@ -255,27 +260,34 @@
     >
   </div>
 
-  <div class="stats-summary" aria-label="Teacher hour overview">
-    {#each statBoxes as box (box.key)}
-      <div class="stat-box">
-        <span class="stat-box__title">{box.title}</span>
-        <p class="size-8" aria-label="{box.title} planned vs total">
-          {box.fractionLabel}
-        </p>
-        <p
-          class="size-4"
-          class:tier-done={box.tier === "done"}
-          class:tier-almost={box.tier === "almost"}
-          class:tier-behind={box.tier === "behind"}
-          aria-label="{box.title} fill percent"
-        >
-          {box.percentLabel}
-        </p>
-        {#if box.warning}
-          <p class="warn size-4">{box.warning}</p>
-        {/if}
-      </div>
-    {/each}
+  <div class="table-wrap stats-table-wrap">
+    <table class="stats-table" aria-label="Hour progress overview">
+      <thead>
+        <tr>
+          <th scope="col"></th>
+          <th scope="col">Contract</th>
+          <th scope="col">Planned</th>
+          <th scope="col">Done</th>
+        </tr>
+      </thead>
+      <tbody>
+        {#each hourProgressRows as row (row.key)}
+          <tr>
+            <th scope="row">{row.label}</th>
+            <td>{formatHourValue(row.contract)}</td>
+            <td>{formatHourValue(row.planned)}</td>
+            <td>{formatHourValue(row.done)}</td>
+          </tr>
+          {#if row.warning}
+            <tr class="stats-warning-row">
+              <td colspan="4">
+                <p class="warn size-4">{row.warning}</p>
+              </td>
+            </tr>
+          {/if}
+        {/each}
+      </tbody>
+    </table>
   </div>
 
   {#if dupDates}
@@ -532,49 +544,42 @@
     border: 1px solid #c9ced6;
     border-radius: 6px;
   }
-  .stats-summary {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.75rem;
-    margin-top: 0.5rem;
+  .stats-table-wrap {
+    margin-top: 0.75rem;
   }
-  .stat-box {
-    padding: 1rem 1.15rem;
-    border: 1px solid #e2e5eb;
-    border-radius: 8px;
-    background: #f8fafc;
-    min-width: 0;
+  .stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+    font-variant-numeric: tabular-nums;
   }
-  .stat-box__title {
-    display: block;
+  .stats-table th,
+  .stats-table td {
+    padding: 0.5rem 0.4rem;
+    border-bottom: 1px solid #e9ecf1;
+    text-align: right;
+  }
+  .stats-table th[scope="row"] {
+    text-align: left;
+    font-weight: 600;
+    color: #334155;
+  }
+  .stats-table thead th {
     font-size: 0.7rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: #64748b;
-    margin-bottom: 0.35rem;
   }
-  .size-8 {
-    margin: 0;
-    font-size: 2rem;
-    font-weight: 700;
-    line-height: 1.1;
-    font-variant-numeric: tabular-nums;
+  .stats-warning-row td {
+    border-bottom: none;
+    padding-top: 0;
   }
   .size-4 {
-    margin: 0.35rem 0 0;
+    margin: 0;
     font-size: 0.875rem;
     line-height: 1.35;
     color: #64748b;
-  }
-  .tier-done {
-    color: #16a34a;
-  }
-  .tier-almost {
-    color: #65a30d;
-  }
-  .tier-behind {
-    color: #9ca3af;
   }
   .warn {
     display: block;
@@ -737,8 +742,8 @@
     border: 0;
   }
   @media (max-width: 640px) {
-    .stats-summary {
-      grid-template-columns: 1fr;
+    .stats-table {
+      font-size: 0.85rem;
     }
   }
 
