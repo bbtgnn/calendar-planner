@@ -31,3 +31,9 @@ export function parseLessonNoteMarkdown(text: string, _fileName: string): ParseN
 	}
 	return { ok: true, dateIso, durationHours };
 }
+
+export function stripNoteBody(text: string): string {
+	const fm = text.match(FRONTMATTER_RE);
+	if (!fm) return text.trim();
+	return text.slice(fm[0].length).trim();
+}

@@ -2,7 +2,7 @@ import type { LessonRow } from '$lib/db/types';
 import { allCriteriaSatisfied, evaluateSessionCriteria } from '$lib/sessionCompletion/criteria';
 import type { EnrichedLesson, LessonNoteWarning, NoteFolder, ScannedNote } from './types';
 import { folderForSessionKind } from './types';
-import { screenshotFileNameForNote } from './screenshot';
+import { screenshotFileNameForNote, screenshotFileNamesForNote } from './screenshot';
 
 export type ScreenshotIndex = {
 	lezioni: Set<string>;
@@ -126,6 +126,7 @@ export function matchNotesToLessons(
 		const pngName = screenshotFileNameForNote(note.fileName);
 		const pngSet = folder === 'lezioni' ? ctx.screenshots.lezioni : ctx.screenshots.extra;
 		const hasPng = pngName !== null && pngSet.has(pngName);
+		const pngNames = screenshotFileNamesForNote(note.fileName, pngSet);
 
 		const criteria = evaluateSessionCriteria({
 			lesson,
@@ -142,8 +143,8 @@ export function matchNotesToLessons(
 			criteria,
 			matchedNote: { folder, fileName: note.fileName }
 		};
-		if (hasPng && pngName) {
-			row.screenshotRef = { folder, fileName: pngName };
+		if (pngNames.length > 0) {
+			row.screenshotRefs = pngNames.map((fileName) => ({ folder, fileName }));
 		}
 		if (note.durationHours !== lesson.durationHours) {
 			row.hoursWarning = {

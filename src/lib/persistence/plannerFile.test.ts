@@ -53,7 +53,7 @@ describe('planner file persistence', () => {
 					done: true,
 					criteria: [{ id: 'note', satisfied: true }],
 					matchedNote: { folder: 'lezioni', fileName: '09.md' },
-					screenshotRef: { folder: 'lezioni', fileName: '09-screen.png' }
+					screenshotRefs: [{ folder: 'lezioni', fileName: '09-screen.png' }]
 				}
 			]
 		});
@@ -84,7 +84,7 @@ describe('planner file persistence', () => {
 					done: true,
 					criteria: [{ id: 'note', satisfied: true }],
 					matchedNote: { folder: 'lezioni', fileName: '09.md' },
-					screenshotRef: { folder: 'lezioni', fileName: '09-screen.png' },
+					screenshotRefs: [{ folder: 'lezioni', fileName: '09-screen.png' }],
 					hoursWarning: {
 						plannerHours: 2,
 						noteHours: 1.5,

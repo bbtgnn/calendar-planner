@@ -25,7 +25,8 @@
     loadScreenshotObjectUrl,
     revokeScreenshotObjectUrl,
   } from "$lib/lessonNotes/loadScreenshot";
-  import type { ScreenshotRef } from "$lib/lessonNotes/types";
+  import { loadNoteBody } from "$lib/lessonNotes/loadNoteBody";
+  import type { MatchedNoteRef, ScreenshotRef } from "$lib/lessonNotes/types";
   import { formatIsoDate } from "$lib/logic/dateFormat";
   import { SESSION_CRITERIA } from "$lib/sessionCompletion/criteria";
   import { criterionTooltip } from "$lib/sessionCompletion/criterionTooltip";
@@ -34,9 +35,16 @@
 
   const COLS = 6;
   let expanded = $state<Set<LessonId>>(new Set());
-  let imageByLesson = $state<
-    Record<string, { url?: string; error?: string; loading?: boolean }>
-  >({});
+  type LessonPreviewState = {
+    note?: { body?: string; loading?: boolean; error?: string };
+    images?: Array<{
+      fileName: string;
+      url?: string;
+      loading?: boolean;
+      error?: string;
+    }>;
+  };
+  let previewByLesson = $state<Record<string, LessonPreviewState>>({});
 
   let { data }: { data: PageData } = $props();
 
@@ -183,11 +191,13 @@
   }
 
   async function refreshNotesFromFolder() {
-    for (const entry of Object.values(imageByLesson)) {
-      revokeScreenshotObjectUrl(entry?.url);
+    for (const entry of Object.values(previewByLesson)) {
+      for (const img of entry?.images ?? []) {
+        revokeScreenshotObjectUrl(img.url);
+      }
     }
     expanded = new Set();
-    imageByLesson = {};
+    previewByLesson = {};
     await invalidateLoadKeys(classLessonsKey);
   }
 
@@ -200,40 +210,106 @@
     });
   }
 
+  function hasScreenshots(lesson: (typeof data.lessons)[0]): boolean {
+    return (lesson.screenshotRefs?.length ?? 0) > 0;
+  }
+
   function toggleExpand(lesson: (typeof data.lessons)[0]) {
-    if (!lesson.screenshotRef) return;
+    if (!lesson.matchedNote && !hasScreenshots(lesson)) return;
     const next = new Set(expanded);
     if (next.has(lesson.id)) {
       next.delete(lesson.id);
-      const prev = imageByLesson[lesson.id]?.url;
-      revokeScreenshotObjectUrl(prev);
-      const { [lesson.id]: _, ...rest } = imageByLesson;
-      imageByLesson = rest;
+      for (const img of previewByLesson[lesson.id]?.images ?? []) {
+        revokeScreenshotObjectUrl(img.url);
+      }
+      const { [lesson.id]: _, ...rest } = previewByLesson;
+      previewByLesson = rest;
     } else {
       next.add(lesson.id);
-      void ensureScreenshotLoaded(lesson.id, lesson.screenshotRef);
+      if (lesson.matchedNote) {
+        void ensureNoteLoaded(lesson.id, lesson.matchedNote);
+      }
+      if (lesson.screenshotRefs?.length) {
+        void ensureScreenshotsLoaded(lesson.id, lesson.screenshotRefs);
+      }
     }
     expanded = next;
   }
 
-  async function ensureScreenshotLoaded(
-    lessonId: LessonId,
-    ref: ScreenshotRef,
-  ) {
-    if (imageByLesson[lessonId]?.url || imageByLesson[lessonId]?.loading)
-      return;
-    imageByLesson = { ...imageByLesson, [lessonId]: { loading: true } };
-    const result = await loadScreenshotObjectUrl(data.class.id, ref);
-    imageByLesson = {
-      ...imageByLesson,
-      [lessonId]: result.ok ? { url: result.url } : { error: result.message },
+  async function ensureNoteLoaded(lessonId: LessonId, ref: MatchedNoteRef) {
+    const current = previewByLesson[lessonId]?.note;
+    if (current?.body !== undefined || current?.loading) return;
+    previewByLesson = {
+      ...previewByLesson,
+      [lessonId]: {
+        ...previewByLesson[lessonId],
+        note: { loading: true },
+      },
     };
+    const result = await loadNoteBody(data.class.id, ref);
+    previewByLesson = {
+      ...previewByLesson,
+      [lessonId]: {
+        ...previewByLesson[lessonId],
+        note: result.ok ? { body: result.body } : { error: result.message },
+      },
+    };
+  }
+
+  async function ensureScreenshotsLoaded(
+    lessonId: LessonId,
+    refs: ScreenshotRef[],
+  ) {
+    const current = previewByLesson[lessonId]?.images ?? [];
+    const pending = refs.filter(
+      (ref) =>
+        !current.some(
+          (item) =>
+            item.fileName === ref.fileName &&
+            (item.url !== undefined || item.loading),
+        ),
+    );
+    if (pending.length === 0) return;
+
+    const loadingItems = pending.map((ref) => ({
+      fileName: ref.fileName,
+      loading: true,
+    }));
+    previewByLesson = {
+      ...previewByLesson,
+      [lessonId]: {
+        ...previewByLesson[lessonId],
+        images: [...current, ...loadingItems],
+      },
+    };
+
+    await Promise.all(
+      pending.map(async (ref) => {
+        const result = await loadScreenshotObjectUrl(data.class.id, ref);
+        const images = previewByLesson[lessonId]?.images ?? [];
+        previewByLesson = {
+          ...previewByLesson,
+          [lessonId]: {
+            ...previewByLesson[lessonId],
+            images: images.map((item) =>
+              item.fileName === ref.fileName
+                ? result.ok
+                  ? { fileName: ref.fileName, url: result.url }
+                  : { fileName: ref.fileName, error: result.message }
+                : item,
+            ),
+          },
+        };
+      }),
+    );
   }
 
   $effect(() => {
     return () => {
-      for (const entry of Object.values(imageByLesson)) {
-        revokeScreenshotObjectUrl(entry?.url);
+      for (const entry of Object.values(previewByLesson)) {
+        for (const img of entry?.images ?? []) {
+          revokeScreenshotObjectUrl(img.url);
+        }
       }
     };
   });
@@ -460,10 +536,10 @@
                 <button
                   type="button"
                   class="link icon-btn"
-                  aria-label="Show screenshot"
+                  aria-label="Show session preview"
                   aria-expanded={expanded.has(lesson.id)}
                   onclick={() => toggleExpand(lesson)}
-                  disabled={!lesson.screenshotRef}
+                  disabled={!lesson.matchedNote && !hasScreenshots(lesson)}
                 >
                   <Image size={16} />
                 </button>
@@ -485,19 +561,50 @@
                 </button>
               </td>
             </tr>
-            {#if expanded.has(lesson.id) && lesson.screenshotRef}
-              <tr class="screenshot-detail">
+            {#if expanded.has(lesson.id) && (lesson.matchedNote || hasScreenshots(lesson))}
+              {@const preview = previewByLesson[lesson.id]}
+              <tr class="lesson-preview-detail">
                 <td colspan={COLS}>
-                  {#if imageByLesson[lesson.id]?.loading}
-                    <p class="muted">Loading…</p>
-                  {:else if imageByLesson[lesson.id]?.error}
-                    <p class="warn">{imageByLesson[lesson.id].error}</p>
-                  {:else if imageByLesson[lesson.id]?.url}
-                    <img
-                      src={imageByLesson[lesson.id].url}
-                      alt="Screenshot for {lesson.title}"
-                    />
-                  {/if}
+                  <div class="lesson-preview-detail__content">
+                    {#if lesson.matchedNote}
+                      <div class="lesson-preview-note">
+                        {#if preview?.note?.loading}
+                          <p class="muted">Loading note…</p>
+                        {:else if preview?.note?.error}
+                          <p class="warn">{preview.note.error}</p>
+                        {:else if preview?.note?.body !== undefined}
+                          {#if preview.note.body}
+                            <pre class="note-body">{preview.note.body}</pre>
+                          {:else}
+                            <p class="muted">No note content</p>
+                          {/if}
+                        {/if}
+                      </div>
+                    {/if}
+                    {#if lesson.screenshotRefs?.length}
+                      <div class="lesson-preview-images">
+                        {#each lesson.screenshotRefs as ref (ref.fileName)}
+                          {@const img = preview?.images?.find(
+                            (item) => item.fileName === ref.fileName,
+                          )}
+                          <div class="lesson-preview-image">
+                            {#if img?.loading}
+                              <p class="muted">Loading {ref.fileName}…</p>
+                            {:else if img?.error}
+                              <p class="warn">{img.error}</p>
+                            {:else if img?.url}
+                              <img
+                                src={img.url}
+                                alt="Screenshot {ref.fileName} for {lesson.title}"
+                              />
+                            {:else}
+                              <p class="muted">Loading {ref.fileName}…</p>
+                            {/if}
+                          </div>
+                        {/each}
+                      </div>
+                    {/if}
+                  </div>
                 </td>
               </tr>
             {/if}
@@ -691,7 +798,28 @@
     background: #f0f7ff;
     box-shadow: inset 3px 0 0 #1967d2;
   }
-  .screenshot-detail img {
+  .lesson-preview-detail__content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .note-body {
+    font-family: ui-monospace, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: #f6f8fb;
+    padding: 0.75rem;
+    border-radius: 4px;
+    max-height: 40vh;
+    overflow-y: auto;
+    margin: 0;
+  }
+  .lesson-preview-images {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .lesson-preview-detail img {
     max-width: 100%;
     max-height: 70vh;
     display: block;

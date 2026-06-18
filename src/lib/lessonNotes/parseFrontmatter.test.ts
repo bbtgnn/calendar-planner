@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { italianDateToIso, parseLessonNoteMarkdown } from './parseFrontmatter';
+import { italianDateToIso, parseLessonNoteMarkdown, stripNoteBody } from './parseFrontmatter';
 
 const SAMPLE = `---
 data: 09/03/2026
@@ -32,5 +32,27 @@ describe('parseLessonNoteMarkdown', () => {
 	it('rejects missing data', () => {
 		const r = parseLessonNoteMarkdown('---\ndurata: 1\n---\n', 'x.md');
 		expect(r.ok).toBe(false);
+	});
+});
+
+describe('stripNoteBody', () => {
+	it('returns trimmed body after frontmatter', () => {
+		const text = `---
+data: 09/03/2026
+durata: 4.5
+---
+
+- bullet one
+- bullet two
+`;
+		expect(stripNoteBody(text)).toBe('- bullet one\n- bullet two');
+	});
+
+	it('returns empty string when only frontmatter', () => {
+		expect(stripNoteBody('---\ndata: 01/01/2026\ndurata: 1\n---\n')).toBe('');
+	});
+
+	it('returns full trimmed text when no frontmatter', () => {
+		expect(stripNoteBody('  hello\nworld  ')).toBe('hello\nworld');
 	});
 });

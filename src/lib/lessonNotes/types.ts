@@ -43,7 +43,7 @@ export type MatchedNoteRef = {
 
 export type EnrichedLesson = LessonRow & {
 	hoursWarning?: LessonHoursWarning;
-	screenshotRef?: ScreenshotRef;
+	screenshotRefs?: ScreenshotRef[];
 	matchedNote?: MatchedNoteRef;
 	criteria?: CriterionStatus[];
 };

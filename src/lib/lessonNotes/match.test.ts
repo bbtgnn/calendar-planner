@@ -45,7 +45,7 @@ describe('matchNotesToLessons', () => {
 			CLASS_PRESENZE
 		);
 		expect(out[0].done).toBe(true);
-		expect(out[0].screenshotRef).toEqual({ folder: 'lezioni', fileName: '09-screen.png' });
+		expect(out[0].screenshotRefs).toEqual([{ folder: 'lezioni', fileName: '09-screen.png' }]);
 		expect(out[0].criteria?.every((c) => c.satisfied)).toBe(true);
 		expect(warnings).toHaveLength(0);
 	});
@@ -107,7 +107,7 @@ describe('matchNotesToLessons', () => {
 			{ lezioni: new Set(), extra: new Set(['01-screen.png']) }
 		);
 		expect(out[0].done).toBe(true);
-		expect(out[0].screenshotRef).toEqual({ folder: 'extra', fileName: '01-screen.png' });
+		expect(out[0].screenshotRefs).toEqual([{ folder: 'extra', fileName: '01-screen.png' }]);
 	});
 
 	it('class not done without presenze even with note and png', () => {
@@ -120,7 +120,7 @@ describe('matchNotesToLessons', () => {
 		);
 		expect(out[0].done).toBe(false);
 		expect(out[0].criteria?.find((c) => c.id === 'attendance')?.satisfied).toBe(false);
-		expect(out[0].screenshotRef).toEqual({ folder: 'lezioni', fileName: '09-screen.png' });
+		expect(out[0].screenshotRefs).toEqual([{ folder: 'lezioni', fileName: '09-screen.png' }]);
 	});
 
 	it('note without png: not done, screenshot criterion unsatisfied', () => {
@@ -155,6 +155,24 @@ describe('matchNotesToLessons', () => {
 		);
 		expect(out[0].done).toBe(false);
 		expect(out[0].criteria).toEqual([]);
-		expect(out[0].screenshotRef).toEqual({ folder: 'lezioni', fileName: '09-screen.png' });
+		expect(out[0].screenshotRefs).toEqual([{ folder: 'lezioni', fileName: '09-screen.png' }]);
+	});
+
+	it('collects multiple screenshot refs for one note', () => {
+		const lessons = [lesson({ id: '1', date: '2026-03-09', sessionKind: 'extra' })];
+		const { lessons: out } = match(
+			lessons,
+			[],
+			[{ folder: 'extra', fileName: '01.md', dateIso: '2026-03-09', durationHours: 1 }],
+			{
+				lezioni: new Set(),
+				extra: new Set(['01-screen.png', '01-screen-2.png', '01-screen-10.png'])
+			}
+		);
+		expect(out[0].screenshotRefs).toEqual([
+			{ folder: 'extra', fileName: '01-screen.png' },
+			{ folder: 'extra', fileName: '01-screen-2.png' },
+			{ folder: 'extra', fileName: '01-screen-10.png' }
+		]);
 	});
 });
